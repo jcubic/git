@@ -2,7 +2,7 @@
 
 This project was created using [isomorphic-git](https://github.com/isomorphic-git/isomorphic-git) and other
 libraries, you can check which ones was used when you
-[follow this link](https://jcubic.github.io/git/#[[0,1,null],[0,2,%22credits%22]]) that will execute
+[follow this link](https://jcubic.github.io/git/#[[0,1,%22credits%22]]) that will execute
 `credits` command in terminal.
 
 First version of the app was created on [codepen](https://codepen.io/jcubic/pen/Gddxpg).
