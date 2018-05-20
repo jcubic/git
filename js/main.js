@@ -42,7 +42,8 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
             red:    '#A00',
             yellow: '#FF5',
             violet: '#a320ce',
-            white:  '#fff'
+            white:  '#fff',
+            'persian-green': '#0aa'
         }
         if (colors[name]) {
             return '[[;' + colors[name] + ';]' + string + ']';
@@ -327,7 +328,6 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
                 } else {
                     term.error('You need to call `git login` to set username and password before push');
                 }
-                
             },
             commit: function(cmd) {
                 cmd.args.shift();
@@ -543,28 +543,51 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
                             if (err) {
                                 return reject(err);
                             }
+                            newFile = newFile.toString();
                             readBranchFile({fs, dir, branch, filepath}).then(oldFile => {
                                 const diff = JsDiff.structuredPatch(filepath, filepath, oldFile, newFile);
                                 const text = diff.hunks.map(hunk => {
-                                    return hunk.lines.map(line => {
+                                    let output = [];
+                                    output.push(color(
+                                        'persian-green',
+                                        [
+                                            '@@ -',
+                                            hunk.oldStart,
+                                            ',',
+                                            hunk.oldLines,
+                                            ' +',
+                                            hunk.newStart,
+                                            ',',
+                                            hunk.newLines,
+                                            ' @@'
+                                        ].join('')
+                                    ));
+                                    output = output.concat(hunk.lines.map(line => {
+                                        let color_name;
+                                        if (line[0].match(/[+-]/)) {
+                                            color_name = line[0] == '-' ? 'red' : 'green';
+                                        }
                                         if (color_name) {
                                             return color(color_name, line);
                                         } else {
                                             return line;
                                         }
-                                    }).join('\n');
+                                    }));
+                                    return output.join('\n');
                                 }).join('\n');
                                 resolve({
                                     text,
                                     filepath
                                 });
-                            }).catch(err => reject(err));
+                            }).catch(err => reject(err), console.log(err));
                         });
                     })
                 }
                 function format(diff) {
-                    const header = color('white', 'diff --git a/' + diff.filepath + ' b/' + diff.filepath);
-                    return [header, diff.text].join('\n');
+                    const header = ['diff --git a/' + diff.filepath + ' b/' + diff.filepath];
+                    header.push('--- ' + diff.filepath);
+                    header.push('+++ ' + diff.filepath);
+                    return [color('white', header.join('\n')), diff.text].join('\n');
                 }
                 gitroot(cwd).then(dir => {
                     if (!cmd.args.length) {
