@@ -307,6 +307,15 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
                 });
             });
         },
+        record: function(cmd) {
+            if (cmd.args[0] == 'start') {
+                term.history_state(true);
+            } else if (cmd.args[0] == 'stop') {
+                term.history_state(false);
+            } else {
+                term.echo('usage: record [stop|start]');
+            }
+        },
         git: {
             push: function(cmd) {
                 if (credentials.username && credentials.password) {
@@ -511,11 +520,9 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
                                 '  (use "git checkout -- <file>..." to discard changes in working directory)',
                                 ''
                             ];
-                            
                             lines = lines.concat(listFiles(not_added, 'red'));
                             output.push(lines.join('\n'));
                         }
-                        
                         var untracked = filter(changes, '*added');
                         if (untracked.length) {
                             lines = [
@@ -746,6 +753,7 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
             }
         }
     }, {
+        execHash: true,
         completion: function(string, cb) {
             var cmd = $.terminal.parse_command(this.before_cursor());
             function processAssets(callback) {
