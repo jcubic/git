@@ -620,7 +620,7 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
                         return diff({dir, filepath}).then(({diff}) => diff).then(format);
                     }
                 }).then(text => {
-                    if (text.length - 1 > term.cols()) {
+                    if (text.length - 1 > term.rows()) {
                         term.less(text);
                     } else {
                         term.echo(text);
@@ -649,7 +649,7 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
                     }
                     git.log({fs, dir, depth, ref: branch}).then(commits => {
                         var text = commits.map(format).join('\n\n');
-                        if (text.length - 1 > term.cols()) {
+                        if (text.length - 1 > term.rows()) {
                             term.less(text);
                         } else {
                             term.echo(text);
