@@ -728,7 +728,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             term.echo(lines.join('\n') + '\n');
         },
         help: function() {
-            term.echo('List of commands: ' + Object.keys(commands).join(', '));
+            term.echo('\nList of commands: ' + Object.keys(commands).join(', '));
             term.echo('List of Git commands: ' + Object.keys(commands.git).join(', '));
             term.echo([
                 '',
@@ -736,7 +736,8 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 'then you can made changes using [[;#fff;]vi], use [[;#fff;]git add] and then [[;#fff;]git commit].',
                 'Before you commit you need to use the command [[b;#fff;]git login] which will ask for credentials.',
                 'It will also ask for full name and email to be used in [[b;#fff;]git commit]. If you set the correct',
-                'username and password you can push to remote; if you type the wrong credentials you can call login again'
+                'username and password you can push to remote; if you type the wrong credentials you can call login again',
+                ''
             ].join('\n'));
         }
     };
