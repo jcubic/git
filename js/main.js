@@ -8,7 +8,7 @@
  * Released under the MIT license
  *
  */
-BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
+BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     var banner = [
         '  ____ ___ _____ ',
         ' / ___|_ _|_   _| __      __   _      _____              _           _',
@@ -18,8 +18,8 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
     ];
     function greetings() {
         var title = this.cols() > banner[1].length ? banner.join('\n') : 'GIT Web Terminal';
-        return title + '\n\n' + 'use [[;#fff;]help] to see available commands' +
-               ' or [[;#fff;]credits] to list of projects used\n';
+        return title + '\n\n' + 'use [[;#fff;]help] to see the available commands' +
+               ' or [[;#fff;]credits] to list the projects used\n';
     }
     var name = 'git'; // terminal name for history
     if (err) {
@@ -27,8 +27,8 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
             term.error('BrowserFS was not initialized');
         }, {greetings: false, name}).echo(greetings).error(err.message || err);
     }
-    window.fs = BrowserFS.BFSRequire("fs");
-    window.path = BrowserFS.BFSRequire("path");
+    window.fs = BrowserFS.BFSRequire('fs');
+    window.path = BrowserFS.BFSRequire('path');
     var dir = '/';
     var cwd = '/';
     var credentials = {};
@@ -181,9 +181,9 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
                 term.pause();
                 fs.stat(dirname, (err, stat) => {
                     if (err) {
-                        term.error("Directory don't exits").resume();
+                        term.error("Directory doesn't exist").resume();
                     } else if (stat.isFile()) {
-                        term.error(`"${dirname}" is not directory`).resume();
+                        term.error(`"${dirname}" is not a directory`).resume();
                     } else {
                         cwd = dirname == '/' ? dirname : dirname.replace(/\/$/, '');
                         gitBranch().then(b => {
@@ -517,7 +517,7 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
                             lines = [
                                 'Changes not staged for commit:',
                                 '  (use "git add <file>..." to update what will be committed)',
-                                '  (use "git checkout -- <file>..." to discard changes in working directory)',
+                                '  (use "git checkout -- <file>..." to discard changes in the working directory)',
                                 ''
                             ];
                             lines = lines.concat(listFiles(not_added, 'red'));
@@ -662,14 +662,14 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
                 term.pause();
                 var re = /\/([^\/]+)(\.git)?$/;
                 var repo_dir = cmd.args.length === 3 ? cmd.args[2] : cmd.args[1].match(re)[1];
-                fs.stat("/" + repo_dir, function(err, stat) {
+                fs.stat('/' + repo_dir, function(err, stat) {
                     if (err) {
                         fs.mkdir(repo_dir, function(err) { if (!err) { clone() }});
                     } else if (stat) {
                         if (stat.isFile()) {
                             term.error(`"${repo_dir}" is a file`);
                         } else {
-                            fs.readdir("/" + repo_dir, function(err, list) {
+                            fs.readdir('/' + repo_dir, function(err, list) {
                                 if (list.length) {
                                     term.error(`"${repo_dir}" exists and is not empty`);
                                 } else {
@@ -880,7 +880,7 @@ function rmdir(dir) {
         var filename = path.join(dir, list[i]);
         var stat = fs.statSync(filename);
 
-        if (filename == "." || filename == "..") {
+        if (filename == '.' || filename == '..') {
             // pass these files
         } else if(stat.isDirectory()) {
             // rmdir recursively
@@ -952,11 +952,11 @@ async function listBranchFiles(fs, dir, branchName) {
         return (async function loop() {
             var entry = entries[i++];
             if (entry) {
-                if (entry.type == "blob") {
+                if (entry.type == 'blob') {
                     list.push(Object.assign({}, entry, {
                         path: path.concat(entry.path).join('/')
                     }));
-                } else if (entry.type == "tree" && entry.path !== ".git") {
+                } else if (entry.type == 'tree' && entry.path !== '.git') {
                     await readFiles(entry.oid, path.concat(entry.path));
                 }
                 return loop();
@@ -979,10 +979,10 @@ async function readBranchFile({ dir, fs, filepath, branch }) {
         if (!packageEntry) {
             throw new Error(`File ${filepath} not found`);
         } else {
-            if (packageEntry.type == "blob") {
+            if (packageEntry.type == 'blob') {
                 const { object: pkg } = await git.readObject({ fs, dir, oid: packageEntry.oid })
                 return pkg.toString('utf8');
-            } else if (packageEntry.type == "tree") {
+            } else if (packageEntry.type == 'tree') {
                 return loop(packageEntry.oid, path);
             }
         }
