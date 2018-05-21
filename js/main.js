@@ -527,7 +527,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         if (untracked.length) {
                             lines = [
                                 'Untracked files:',
-                                '  (use "git add <file>..." to include among files to be committed)',
+                                '  (use "git add <file>..." to include in what will be committed)',
                                 ''
                             ];
                             lines = lines.concat(untracked.map(([name, status]) => padding + color('red', name)));
