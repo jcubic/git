@@ -710,6 +710,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         },
         credits: function() {
             var lines = [
+                '',
                 'Projects used with GIT Web Terminal:',
                 '\t[[!;;;;https://isomorphic-git.github.io]isomorphic-git] v. ' + git.version() + ' by William Hilton',
                 '\t[[!;;;;https://github.com/jvilk/BrowserFS]BrowserFS] by John Vilk',
@@ -724,7 +725,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 '',
                 'Contributors:'
             ].concat(contributors.map(user => '\t[[!;;;;' + user.url + ']' + (user.fullname || user.name) + ']'));
-            term.echo(lines.join('\n'));
+            term.echo(lines.join('\n') + '\n');
         },
         help: function() {
             term.echo('List of commands: ' + Object.keys(commands).join(', '));
