@@ -789,6 +789,8 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             }
             if (action) {
                 action.call(term, cmd);
+            } else {
+                term.error('Unknown command');
             }
         }
     }, {
