@@ -728,11 +728,11 @@ BrowserFS.configure({ fs: "IndexedDB", options: {} }, function (err) {
             term.echo('List of commands: ' + Object.keys(commands).join(', '));
             term.echo('List of Git commands: ' + Object.keys(commands.git).join(', '));
             term.echo([
-                'to use git you first need to clone the repo, it may take a while (depednig on the size),',
+                'to use git you first need to clone the repo; it may take a while (depending on the size),',
                 'then you can made changes using [[;#fff;]vi], use [[;#fff;]git add] and then [[;#fff;]git commit].',
-                'Before you commit you need to use new command [[b;#fff;]git login] that will ask for credentails,',
-                'it also ask for fullname and email that is used in [[b;#fff;]git commit]. If you set correct',
-                'username and password you can push to remote, it you type wrong credentials you can call login again'
+                'Before you commit you need to use the command [[b;#fff;]git login] which will ask for credentials.',
+                'It will also ask for full name and email to be used in [[b;#fff;]git commit]. If you set the correct',
+                'username and password you can push to remote; if you type the wrong credentials you can call login again'
             ].join('\n'));
         }
     };
