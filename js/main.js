@@ -720,8 +720,10 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 '\t[[!;;;;https://github.com/Olical/EventEmitter/]EventEmitter] by Oliver Caldwell',
                 '\t[[!;;;;https://github.com/PrismJS/prism]PrimsJS] by Lea Verou',
                 '\t[[!;;;;https://momentjs.com]Momentjs] v. ' + moment.version,
-                '\t[[!;;;;https://github.com/kpdecker/jsdiff]jsdiff] by Kevin Decker'
-            ];
+                '\t[[!;;;;https://github.com/kpdecker/jsdiff]jsdiff] by Kevin Decker',
+                '',
+                'Contributors:'
+            ].concat(contributors.map(user => '\t[[!;;;;' + user.url + ']' + user.fullname || user.name + ']'));
             term.echo(lines.join('\n'));
         },
         help: function() {
