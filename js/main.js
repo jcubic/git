@@ -168,7 +168,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     // -----------------------------------------------------------------------------------------------------
     function gitAddAll({fs, dir, branch}) {
         return getAllStats({fs, cwd: dir, branch}).then((files) => {
-            return files.filter(([_, status]) => !status.includes(['unmodified', 'ignored']));
+            return files.filter(([_, status]) => !['unmodified', 'ignored'].includes(status));
         }).then((files) => {
             return Promise.all(files.map(([filepath]) => git.add({fs, dir, filepath})));
         });
@@ -617,9 +617,9 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                                     text,
                                     filepath
                                 });
-                            }).catch(err => reject(err), console.log(err));
+                            }).catch(err => reject(err));
                         });
-                    })
+                    });
                 }
                 function format(diff) {
                     const header = ['diff --git a/' + diff.filepath + ' b/' + diff.filepath];
