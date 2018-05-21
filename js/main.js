@@ -723,7 +723,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 '\t[[!;;;;https://github.com/kpdecker/jsdiff]jsdiff] by Kevin Decker',
                 '',
                 'Contributors:'
-            ].concat(contributors.map(user => '\t[[!;;;;' + user.url + ']' + user.fullname || user.name + ']'));
+            ].concat(contributors.map(user => '\t[[!;;;;' + user.url + ']' + (user.fullname || user.name) + ']'));
             term.echo(lines.join('\n'));
         },
         help: function() {
