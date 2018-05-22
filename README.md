@@ -22,6 +22,12 @@ Steps to make changes to remote git repo (tested with github):
 
 To see list of contributors you can check [credits command](https://jcubic.github.io/git/#[[0,1,"credits"]]).
 
+### Proxy
+
+Proxy used to fetch files from remote repositories is located on my hosting
+[https://jcubic.pl/proxy.php](https://jcubic.pl/proxy.php). You can read the source code of that file
+[here](https://github.com/jcubic/git/blob/master/proxy.php).
+
 ### License
 
 Licensed under [MIT](http://opensource.org/licenses/MIT) license
