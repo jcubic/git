@@ -55,7 +55,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             violet: '#a320ce',
             white:  '#fff',
             'persian-green': '#0aa'
-        }
+        };
         if (colors[name]) {
             return '[[;' + colors[name] + ';]' + string + ']';
         } else {
@@ -379,14 +379,14 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                     } else if (stat) {
                         if (stat.isDirectory()) {
                             if (options.match(/r/)) {
-                                rmDir(path_name);
+                                rmdir(path_name);
                             } else {
                                 term.error(`${path_name} is directory`);
                             }
                         } else if (stat.isFile()) {
                             fs.unlink(path_name);
                         } else {
-                            term.error(`${path_name} is invalid`)
+                            term.error(`${path_name} is invalid`);
                         }
                         if (!--len) {
                             term.resume();
@@ -421,7 +421,26 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                             authPassword: credentials.password,
                             emitter
                         });
-                    }).then(term.resume).catch(error);
+                    }).then(() => {
+                        /* TODO:
+                         * To github.com:jcubic/git.git
+                         *   3554a7a..00e7bae  gh-pages -> gh-pages
+                         *
+                         * kuba@jcubic:~/projects/jcubic/terminal/git$ git log
+                         * commit 00e7bae75c1bb8805a04c1e898444dbbb3b2b6d5 (HEAD -> gh-pages, origin/gh-pages)
+                         * Author: Jakub Jankiewicz <jcubic@onet.pl>
+                         * Date:   Tue May 22 22:36:50 2018 +0200
+                         *
+                         *    fix function name
+                         *
+                         *commit 3554a7aa7bfad8a98a75ed7714bd9f972571a17a
+                         *Author: Jakub Jankiewicz <jcubic@onet.pl>
+                         * Date:   Tue May 22 22:28:11 2018 +0200
+                         *
+                         *    prepare scope for meta service worker
+                         */
+                        term.echo();
+                    }).catch(error);
                 } else {
                     term.error('You need to call `git login` to set username and password before push');
                 }
@@ -526,7 +545,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                                         }).catch(err => term.error(err));
                                         if (options.match(/r/)) {
                                             if (!long_options.includes(/--cached/)) {
-                                                promise.then(() => rmDir(path_name));
+                                                promise.then(() => rmdir(path_name));
                                             }
                                         } else {
                                             term.error(`${path_name} is directory`);
@@ -963,10 +982,13 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     }).echo(greetings);
 });
 
+// ---------------------------------------------------------------------------------------------------------
 function time() {
     var d = new Date();
     return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => ('0' + n).slice(-2)).join(':');
 }
+
+// ---------------------------------------------------------------------------------------------------------
 function listDir(path) {
     return new Promise(function(resolve, reject) {
         fs.readdir(path, function(err, dirList) {
@@ -998,6 +1020,7 @@ function listDir(path) {
     });
 }
 
+// ---------------------------------------------------------------------------------------------------------
 // source: https://stackoverflow.com/a/3629861/387194
 function union(x, y) {
   var obj = {};
@@ -1012,30 +1035,52 @@ function union(x, y) {
   }
   return res;
 }
+
+// ---------------------------------------------------------------------------------------------------------
 function intersection(a, b) {
     return a.filter(function(n) {
         return b.includes(n);
     });
 }
-// source: https://stackoverflow.com/a/31918120/387194
-function rmdir(dir) {
-    var list = fs.readdirSync(dir);
-    for(var i = 0; i < list.length; i++) {
-        var filename = path.join(dir, list[i]);
-        var stat = fs.statSync(filename);
 
-        if (filename == '.' || filename == '..') {
-            // pass these files
-        } else if(stat.isDirectory()) {
-            // rmdir recursively
-            rmdir(filename);
-        } else {
-            // rm fiilename
-            fs.unlinkSync(filename);
-        }
-    }
-    fs.rmdirSync(dir);
+// ---------------------------------------------------------------------------------------------------------
+async function rmdir(dir) {
+    return new Promise(function(resolve, reject) {
+        fs.readdir(dir, async function(err, list) {
+            if (err) {
+                return reject(err);
+            }
+            for(var i = 0; i < list.length; i++) {
+                var filename = path.join(dir, list[i]);
+                var stat = await new Promise(function(resolve, reject) {
+                    fs.stat(filename, function(err, stat) {
+                        if (err) {
+                            return reject(err);
+                        }
+                        resolve(stat);
+                    });
+                });
+                if (!filename.match(/^\.{1,2}$/)) {
+                    if(stat.isDirectory()) {
+                        await rmdir(filename);
+                    } else {
+                        await new Promise(function(resolve, reject) {
+                            fs.unlink(filename, function(err) {
+                                if (err) {
+                                    return reject(err);
+                                }
+                                resolve();
+                            });
+                        });
+                    }
+                }
+            }
+            fs.rmdir(dir, resolve);
+        });
+    });
 }
+
+// ---------------------------------------------------------------------------------------------------------
 // prism overwrite to produce terminal formatting instead of html
 (function(Token) {
     var _ = Prism;
@@ -1084,6 +1129,7 @@ function rmdir(dir) {
     };
 })(Prism.Token);
 
+// ---------------------------------------------------------------------------------------------------------
 async function listBranchFiles(fs, dir, branchName) {
     const repo = { fs, dir };
     const originBaseRef = 'refs/remotes/origin/';
@@ -1109,6 +1155,7 @@ async function listBranchFiles(fs, dir, branchName) {
     })(tree, []).then(() => list.map((entry) => entry.path));
 }
 
+// ---------------------------------------------------------------------------------------------------------
 async function readBranchFile({ dir, fs, filepath, branch }) {
     const ref = 'refs/remotes/origin/' + branch;
     const sha = await git.resolveRef({ fs, dir,  ref });
@@ -1133,7 +1180,7 @@ async function readBranchFile({ dir, fs, filepath, branch }) {
     })(tree, filepath.split('/'));
 }
 
-
+// ---------------------------------------------------------------------------------------------------------
 function init_ymacs() {
     var root = 'https://rawgit.com/jcubic/leash/master/lib/apps/ymacs/';
     function style(url) {
@@ -1179,6 +1226,7 @@ function init_ymacs() {
     });
     style(root + 'test/dl/new-theme/default.css');
     style(root + 'src/css/ymacs.css');
+    // -----------------------------------------------------------------------------------------------------
     return promise.then(() => {
         var ymacs = new Ymacs({
             buffers: [ ],
@@ -1192,6 +1240,7 @@ function init_ymacs() {
         try {
             ymacs.getActiveBuffer().cmd("eval_file", ".ymacs");
         } catch(ex) {}
+        // -------------------------------------------------------------------------------------------------
         Ymacs.prototype.fs_setFileContents = function(name, content, stamp, cont) {
             var self = this;
             if (stamp) {
@@ -1212,6 +1261,7 @@ function init_ymacs() {
                 });
             }
         };
+        // -------------------------------------------------------------------------------------------------
         Ymacs.prototype.fs_getFileContents = function(name, nothrow, cont) {
             var self = this;
             fs.stat(name, function(err, stat) {
@@ -1232,14 +1282,17 @@ function init_ymacs() {
                 }
             });
         };
+        // -------------------------------------------------------------------------------------------------
         Ymacs.prototype.fs_fileType = function(name, cont) {
             fs.stat(name, function(err, stat) {
                 cont(err || stat.isFile() ? true : null);
             });
         };
+        // -------------------------------------------------------------------------------------------------
         Ymacs.prototype.fs_normalizePath = function(path) {
             return path;
         };
+        // -------------------------------------------------------------------------------------------------
         Ymacs.prototype.fs_getDirectory = function(dir, cont) {
             fs.readdir(dir, function(err, list) {
                 var result = {};
@@ -1258,6 +1311,7 @@ function init_ymacs() {
                 })();
             });
         };
+        // -------------------------------------------------------------------------------------------------
         Ymacs_Buffer.newCommands({
             exit: Ymacs_Interactive(function() {
                 var buffs = ymacs.buffers.slice();
@@ -1302,6 +1356,7 @@ function init_ymacs() {
                 }
             })
         });
+        // -------------------------------------------------------------------------------------------------
         DEFINE_SINGLETON("Ymacs_Keymap_Leash", Ymacs_Keymap_Emacs, function(D, P) {
             D.KEYS = {
                 "C-x C-c": "exit"
