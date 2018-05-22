@@ -29,6 +29,17 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     }
     window.fs = BrowserFS.BFSRequire('fs');
     window.path = BrowserFS.BFSRequire('path');
+    if ('serviceWorker' in navigator) {
+        var scope = location.pathname.replace(/\/[^\/]+$/, '/');
+        navigator.serviceWorker.register('sw.js', {scope})
+                 .then(function(reg) {
+                     // registration worked
+                     console.log('Registration succeeded. Scope is ' + reg.scope);
+                 }).catch(function(error) {
+                     // registration failed
+                     console.log('Registration failed with ' + error);
+                 });
+    }
     var dir = '/';
     var cwd = '/';
     var credentials = {};
@@ -68,6 +79,48 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             return ref.match(/ref: refs\/heads\/(.*)/)[1];
         } catch(e) {
         }
+    }
+    // -----------------------------------------------------------------------------------------------------
+    function gitDiff({dir, filepath}) {
+        var fname = dir + '/' + filepath;
+        return new Promise(function(resolve, reject) {
+            fs.readFile(fname, function(err, newFile) {
+                if (err) {
+                    return reject(err);
+                }
+                newFile = newFile.toString();
+                readBranchFile({fs, dir, branch, filepath}).then(oldFile => {
+                    const diff = JsDiff.structuredPatch(filepath, filepath, oldFile || '', newFile || '');
+                    resolve(diff);
+                }).catch(err => reject(err));
+            });
+        });
+    }
+    // -----------------------------------------------------------------------------------------------------
+    async function gitReset({dir, ref, branch}) {
+        var re = /^HEAD~([0-9]+)$/
+        var m = ref.match(re);
+        if (m) {
+            var count = +m[1];
+            var commits = await git.log({fs, dir, depth: count + 1});
+            var commit = commits.pop().oid;
+            return new Promise((resolve, reject) => {
+                fs.writeFile(dir + `/.git/refs/heads/${branch}`, commit, (err) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    // clear the index (if any)
+                    fs.unlink(dir + '/.git/index', (err) => {
+                        if (err) {
+                            return reject(err);
+                        }
+                        // checkout the branch into the working tree
+                        git.checkout({ dir, fs, ref: branch }).then(resolve);
+                    });
+                });
+            });
+        }
+        return Promise.reject(`Wrong ref ${ref}`);
     }
     // -----------------------------------------------------------------------------------------------------
     // return path for cd
@@ -132,7 +185,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 files: files.map(filepath => path.resolve(cwd + '/' + filepath).replace(re, '')),
                 dir
             };
-        }); 
+        });
     }
     // -----------------------------------------------------------------------------------------------------
     function getOption(option, args) {
@@ -166,9 +219,13 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         });
     }
     // -----------------------------------------------------------------------------------------------------
-    function gitAddAll({fs, dir, branch}) {
+    function gitAddAll({fs, dir, branch, all}) {
         return getAllStats({fs, cwd: dir, branch}).then((files) => {
-            return files.filter(([_, status]) => !status.includes(['unmodified', 'ignored']));
+            var skip_status = ['unmodified', 'ignored'];
+            if (!all) {
+                skip_status.push('*added');
+            }
+            return files.filter(([_, status]) => !skip_status.includes(status));
         }).then((files) => {
             return Promise.all(files.map(([filepath]) => git.add({fs, dir, filepath})));
         });
@@ -194,6 +251,37 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 });
             }
         },
+        emacs: function(cmd) {
+            if (ymacs_loading) {
+                term.echo('Loading Emacs (it take few seconds, but only first time)...').pause();
+            }
+            ymacs_promise.then(ymacs => {
+                term.resume();
+                var fname = cmd.args[0];
+                function init() {
+                    setTimeout(function() {
+                        term.focus(false);
+                        $('.DlDesktop').show();
+                        desktop.fullScreen();
+                        ymacs.focus();
+                        ymacs.disabled(false);
+                        desktop.callHooks('onResize');
+                    }, 0);
+                }
+                if (fname) {
+                    var path;
+                    if (fname.match(/^\//)) {
+                        path = fname;
+                    } else {
+                        path = (cwd === '/' ? '' : cwd) + '/' + fname;
+                    }
+                    init();
+                    ymacs.getActiveBuffer().cmd('find_file', path);
+                } else {
+                    init();
+                }
+            });
+        },
         vi: function(cmd) {
             var textarea = $('.vi');
             var editor;
@@ -204,7 +292,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 if (fname.match(/^\//)) {
                     path = fname;
                 } else {
-                    path = cwd + '/' + fname;
+                    path = (cwd === '/' ? '' : cmd) + '/' + fname;
                 }
                 function open(file) {
                     // we need to replace < and & because jsvi is handling html tags
@@ -278,7 +366,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         },
         rm: function(cmd) {
             var {options, args} = split_args(cmd.args);
-            
+
             var len = args.length;
             if (len) {
                 term.pause();
@@ -354,20 +442,56 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                     } else if (!name) {
                         term.error('You need to use git login first');
                     } else {
-                        return git.commit({fs, dir, author: {
-                            email: credentials.email,
-                            name
-                        }, message});
+                        return getAllStats({fs, branch}).then(list => {
+                            var statuses =  ['modified', 'deleted', 'added'];
+                            var modifications = list.filter(([_, status]) => statuses.includes(status));
+                            return Promise.all(modifications.map(([filepath]) => {
+                                return gitDiff({dir, filepath}).then(diff => ({filepath, diff}));
+                            }));
+                        }).then(list => {
+                            var modifications = list.reduce((acc, {diff: {hunks}}) => {
+                                hunks.forEach(function(hunk) {
+                                    hunk.lines.forEach((line) => {
+                                        if (line[0] === '-') {
+                                            acc.minus++;
+                                        } else if (line[0] === '+') {
+                                            acc.plus++;
+                                        }
+                                    });
+                                });
+                                return acc;
+                            }, {plus: 0, minus: 0});
+                            const plural = n => n == 1 ? '' : 's';
+                            return git.commit({
+                                fs,
+                                dir,
+                                author: {
+                                    email: credentials.email,
+                                    name
+                                },
+                                message
+                            }).then(sha => {
+                                var stat = [list.length + ' file' + plural(list.length)];
+                                if (modifications.plus) {
+                                    stat.push(`${modifications.plus} insertion${plural(modifications.plus)}(+)`);
+                                }
+                                if (modifications.minus) {
+                                    stat.push(`${modifications.minus} insertion${plural(modifications.minus)}(-)`);
+                                }
+                                term.echo(`[master ${sha.substring(0, 7)}] ${message}\n${stat.join(', ')}`);
+                            });
+                        });
                     }
                 }).catch(error);
             },
             add: function(cmd) {
                 term.pause();
                 cmd.args.shift();
-                var all = cmd.args.filter(arg => arg.match(/^(-A|-all)$/)).length;
-                if (all) {
+                var all_git = cmd.args.filter(arg => arg.match(/^(-A|-all)$/)).length;
+                var all = !!cmd.args.filter(arg => arg === '.').length;
+                if (all || all_git) {
                     gitroot(cwd).then(dir => {
-                        return gitAddAll({fs, dir, branch});
+                        return gitAddAll({fs, dir, branch, all});
                     }).then(term.resume).catch(error);
                 } else if (cmd.args.length > 0) {
                     processGitFiles(cmd.args).then(({files, dir}) => {
@@ -462,6 +586,13 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             status: function(cmd) {
                 var dir = cwd.split('/')[1];
                 term.pause();
+                /* TODO:
+                 * On branch master
+                 * Your branch is ahead of 'origin/master' by 1 commit.
+                 *   (use "git push" to publish your local commits)
+                 *
+                 * nothing to commit, working tree clean
+                 */
                 getAllStats({fs, branch}).then((files) => {
                     function filter(files, name) {
                         if (name instanceof Array) {
@@ -540,55 +671,59 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                     }
                 }).catch(error);
             },
+            checkout: function(cmd) {
+                term.echo('to be implemented');
+                /* TODO:
+                 *
+                 * Switched to branch 'gh-pages'
+                 * Your branch is up-to-date with 'origin/gh-pages'.
+                 *
+                 * Switched to a new branch 'test'
+                 *
+                 * Switched to branch 'master'
+                 * Your branch is ahead of 'origin/master' by 2 commits.
+                 *   (use "git push" to publish your local commits)
+                 */
+            },
             diff: function(cmd) {
                 cmd.args.shift();
                 term.pause();
                 function diff({dir, filepath}) {
-                    var fname = dir + '/' + filepath;
-                    return new Promise(function(resolve, reject) {
-                        fs.readFile(fname, function(err, newFile) {
-                            if (err) {
-                                return reject(err);
-                            }
-                            newFile = newFile.toString();
-                            readBranchFile({fs, dir, branch, filepath}).then(oldFile => {
-                                const diff = JsDiff.structuredPatch(filepath, filepath, oldFile, newFile);
-                                const text = diff.hunks.map(hunk => {
-                                    let output = [];
-                                    output.push(color(
-                                        'persian-green',
-                                        [
-                                            '@@ -',
-                                            hunk.oldStart,
-                                            ',',
-                                            hunk.oldLines,
-                                            ' +',
-                                            hunk.newStart,
-                                            ',',
-                                            hunk.newLines,
-                                            ' @@'
-                                        ].join('')
-                                    ));
-                                    output = output.concat(hunk.lines.map(line => {
-                                        let color_name;
-                                        if (line[0].match(/[+-]/)) {
-                                            color_name = line[0] == '-' ? 'red' : 'green';
-                                        }
-                                        if (color_name) {
-                                            return color(color_name, line);
-                                        } else {
-                                            return line;
-                                        }
-                                    }));
-                                    return output.join('\n');
-                                }).join('\n');
-                                resolve({
-                                    text,
-                                    filepath
-                                });
-                            }).catch(err => reject(err), console.log(err));
-                        });
-                    })
+                    return gitDiff({dir, filepath}).then(diff => {
+                        const text = diff.hunks.map(hunk => {
+                            let output = [];
+                            output.push(color(
+                                'persian-green',
+                                [
+                                    '@@ -',
+                                    hunk.oldStart,
+                                    ',',
+                                    hunk.oldLines,
+                                    ' +',
+                                    hunk.newStart,
+                                    ',',
+                                    hunk.newLines,
+                                    ' @@'
+                                ].join('')
+                            ));
+                            output = output.concat(hunk.lines.map(line => {
+                                let color_name;
+                                if (line[0].match(/[+-]/)) {
+                                    color_name = line[0] == '-' ? 'red' : 'green';
+                                }
+                                if (color_name) {
+                                    return color(color_name, line);
+                                } else {
+                                    return line;
+                                }
+                            }));
+                            return output.join('\n');
+                        }).join('\n');
+                        return {
+                            text,
+                            filepath
+                        };
+                    });
                 }
                 function format(diff) {
                     const header = ['diff --git a/' + diff.filepath + ' b/' + diff.filepath];
@@ -710,6 +845,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         },
         credits: function() {
             var lines = [
+                '',
                 'Projects used with GIT Web Terminal:',
                 '\t[[!;;;;https://isomorphic-git.github.io]isomorphic-git] v. ' + git.version() + ' by William Hilton',
                 '\t[[!;;;;https://github.com/jvilk/BrowserFS]BrowserFS] by John Vilk',
@@ -720,22 +856,29 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 '\t[[!;;;;https://github.com/Olical/EventEmitter/]EventEmitter] by Oliver Caldwell',
                 '\t[[!;;;;https://github.com/PrismJS/prism]PrimsJS] by Lea Verou',
                 '\t[[!;;;;https://momentjs.com]Momentjs] v. ' + moment.version,
-                '\t[[!;;;;https://github.com/kpdecker/jsdiff]jsdiff] by Kevin Decker'
-            ];
-            term.echo(lines.join('\n'));
+                '\t[[!;;;;https://github.com/kpdecker/jsdiff]jsdiff] by Kevin Decker',
+                '',
+                'Contributors:'
+            ].concat(contributors.map(user => '\t[[!;;;;' + user.url + ']' + (user.fullname || user.name) + ']'));
+            term.echo(lines.join('\n') + '\n');
         },
         help: function() {
-            term.echo('List of commands: ' + Object.keys(commands).join(', '));
+            term.echo('\nList of commands: ' + Object.keys(commands).join(', '));
             term.echo('List of Git commands: ' + Object.keys(commands.git).join(', '));
             term.echo([
+                '',
                 'to use git you first need to clone the repo; it may take a while (depending on the size),',
                 'then you can made changes using [[;#fff;]vi], use [[;#fff;]git add] and then [[;#fff;]git commit].',
                 'Before you commit you need to use the command [[b;#fff;]git login] which will ask for credentials.',
                 'It will also ask for full name and email to be used in [[b;#fff;]git commit]. If you set the correct',
-                'username and password you can push to remote; if you type the wrong credentials you can call login again'
+                'username and password you can push to remote; if you type the wrong credentials you can call login again',
+                ''
             ].join('\n'));
         }
     };
+    var ymacs_loading = true;
+    var ymacs_promise = init_ymacs();
+    ymacs_promise.then(() => ymacs_loading = false);
     var term = $('.term').terminal(function(command, term) {
         var cmd = $.terminal.parse_command(command);
         if (commands[cmd.name]) {
@@ -750,6 +893,8 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             }
             if (action) {
                 action.call(term, cmd);
+            } else {
+                term.error('Unknown command');
             }
         }
     }, {
@@ -986,4 +1131,182 @@ async function readBranchFile({ dir, fs, filepath, branch }) {
             }
         }
     })(tree, filepath.split('/'));
+}
+
+
+function init_ymacs() {
+    var root = 'https://rawgit.com/jcubic/leash/master/lib/apps/ymacs/';
+    function style(url) {
+        $('<link/>').attr({
+            href: url,
+            rel: 'stylesheet'
+        }).appendTo('head');
+    }
+    var files = [
+        'test/dl/js/thelib.js',
+        'src/js/ymacs.js',
+        'src/js/ymacs-keyboard.js',
+        'src/js/ymacs-regexp.js',
+        'src/js/ymacs-frame.js',
+        'src/js/ymacs-textprop.js',
+        'src/js/ymacs-exception.js',
+        'src/js/ymacs-interactive.js',
+        'src/js/ymacs-buffer.js',
+        'src/js/ymacs-marker.js',
+        'src/js/ymacs-commands.js',
+        'src/js/ymacs-commands-utils.js',
+        'src/js/ymacs-keymap.js',
+        'src/js/ymacs-keymap-emacs.js',
+        'src/js/ymacs-keymap-isearch.js',
+        'src/js/ymacs-minibuffer.js',
+        'src/js/ymacs-tokenizer.js',
+        'src/js/ymacs-mode-paren-match.js',
+        'src/js/ymacs-mode-lisp.js',
+        'src/js/ymacs-mode-js.js',
+        'src/js/ymacs-mode-xml.js',
+        'src/js/ymacs-mode-css.js',
+        'src/js/ymacs-mode-markdown.js',
+    ];
+    var promise = new Promise(function(resolve) {
+        (function loop() {
+            var file = files.shift();
+            if (!file) {
+                resolve();
+            } else {
+                $.getScript(root + file).then(loop);
+            }
+        })();
+    });
+    style(root + 'test/dl/new-theme/default.css');
+    style(root + 'src/css/ymacs.css');
+    return promise.then(() => {
+        var ymacs = new Ymacs({
+            buffers: [ ],
+            className: "Ymacs-blinking-caret"
+        });
+        desktop = new DlDesktop({});
+        layout = new DlLayout({ parent: desktop });
+        ymacs.setColorTheme([ "dark", "y" ]);
+        ymacs.disabled(true);
+        layout.packWidget(ymacs, { pos: "bottom", fill: "*" });
+        try {
+            ymacs.getActiveBuffer().cmd("eval_file", ".ymacs");
+        } catch(ex) {}
+        Ymacs.prototype.fs_setFileContents = function(name, content, stamp, cont) {
+            var self = this;
+            if (stamp) {
+                fs.readFile(name, function(err, file) {
+                    if (file != stamp) {
+                        cont(null);
+                    } else {
+                        self.fs_setFileContents(name, content, false, cont);
+                    }
+                });
+            } else {
+                fs.writeFile(name, content, function(err, written) {
+                    if (!err) {
+                        cont(content);
+                    } else {
+                        self.getActiveBuffer().signalInfo("Can't save file");
+                    }
+                });
+            }
+        };
+        Ymacs.prototype.fs_getFileContents = function(name, nothrow, cont) {
+            var self = this;
+            fs.stat(name, function(err, stat) {
+                if (err || !stat.isFile()) {
+                    cont(null, null);
+                } else {
+                    fs.readFile(name, function(err, file) {
+                        if (file === null) {
+                            if (!nothrow) {
+                                throw new Ymacs_Exception("File not found");
+                            } else {
+                                self.getActiveBuffer().signalInfo("Can't open file");
+                            }
+                        } else {
+                            cont(file, file);
+                        }
+                    });
+                }
+            });
+        };
+        Ymacs.prototype.fs_fileType = function(name, cont) {
+            fs.stat(name, function(err, stat) {
+                cont(err || stat.isFile() ? true : null);
+            });
+        };
+        Ymacs.prototype.fs_normalizePath = function(path) {
+            return path;
+        };
+        Ymacs.prototype.fs_getDirectory = function(dir, cont) {
+            fs.readdir(dir, function(err, list) {
+                var result = {};
+                (function loop() {
+                    var obj = list.shift();
+                    if (!obj) {
+                        cont(result);
+                    } else {
+                        fs.stat(dir + '/' + obj, function(err, stat) {
+                            if (!err) {
+                                result[obj] = {type: stat.isFile() ? 'file' : 'directory'}
+                                loop();
+                            }
+                        });
+                    }
+                })();
+            });
+        };
+        Ymacs_Buffer.newCommands({
+            exit: Ymacs_Interactive(function() {
+                var buffs = ymacs.buffers.slice();
+                (function loop() {
+                    var buff = buffs.shift();
+                    if (buff.length > 1) {
+                        function next() {
+                            ymacs.killBuffer(buff);
+                            loop();
+                        }
+                        if (buff.name != '*scratch*') {
+                            if (buff.dirty()) {
+                                var msg = 'Save file ' + buff.name + ' yes or no?';
+                                buff.cmd('minibuffer_yn', msg, function(yes) {
+                                    if (yes) {
+                                        buff.cmd('save_buffer_with_continuation',
+                                                 false,
+                                                 next);
+                                    } else {
+                                        next();
+                                    }
+                                });
+                            } else {
+                                next();
+                            }
+                        }
+                    } else {
+                        $('.DlDesktop').hide();
+                        ymacs.disabled(true);
+                        $.terminal.active().focus();
+                    }
+                })();
+            }),
+            next_buffer: Ymacs_Interactive(function() {
+                var buffs = ymacs.buffers.slice();
+                var buff = ymacs.getActiveBuffer();
+                while(buffs.shift() != buff) {}
+                if (buffs.length) {
+                    ymacs.switchToBuffer(buffs[0]);
+                } else {
+                    ymacs.switchToBuffer(ymacs.buffers[0]);
+                }
+            })
+        });
+        DEFINE_SINGLETON("Ymacs_Keymap_Leash", Ymacs_Keymap_Emacs, function(D, P) {
+            D.KEYS = {
+                "C-x C-c": "exit"
+            };
+        });
+        return ymacs;
+    });
 }
