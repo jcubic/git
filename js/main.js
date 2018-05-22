@@ -55,7 +55,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             violet: '#a320ce',
             white:  '#fff',
             'persian-green': '#0aa'
-        }
+        };
         if (colors[name]) {
             return '[[;' + colors[name] + ';]' + string + ']';
         } else {
@@ -379,14 +379,14 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                     } else if (stat) {
                         if (stat.isDirectory()) {
                             if (options.match(/r/)) {
-                                rmDir(path_name);
+                                rmdir(path_name);
                             } else {
                                 term.error(`${path_name} is directory`);
                             }
                         } else if (stat.isFile()) {
                             fs.unlink(path_name);
                         } else {
-                            term.error(`${path_name} is invalid`)
+                            term.error(`${path_name} is invalid`);
                         }
                         if (!--len) {
                             term.resume();
@@ -526,7 +526,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                                         }).catch(err => term.error(err));
                                         if (options.match(/r/)) {
                                             if (!long_options.includes(/--cached/)) {
-                                                promise.then(() => rmDir(path_name));
+                                                promise.then(() => rmdir(path_name));
                                             }
                                         } else {
                                             term.error(`${path_name} is directory`);
