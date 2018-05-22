@@ -585,6 +585,13 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             status: function(cmd) {
                 var dir = cwd.split('/')[1];
                 term.pause();
+                /* TODO:
+                 * On branch master
+                 * Your branch is ahead of 'origin/master' by 1 commit.
+                 *   (use "git push" to publish your local commits)
+                 *
+                 * nothing to commit, working tree clean
+                 */
                 getAllStats({fs, branch}).then((files) => {
                     function filter(files, name) {
                         if (name instanceof Array) {
@@ -662,6 +669,20 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         term.resume();
                     }
                 }).catch(error);
+            },
+            checkout: function(cmd) {
+                term.echo('to be implemented');
+                /* TODO:
+                 *
+                 * Switched to branch 'gh-pages'
+                 * Your branch is up-to-date with 'origin/gh-pages'.
+                 *
+                 * Switched to a new branch 'test'
+                 *
+                 * Switched to branch 'master'
+                 * Your branch is ahead of 'origin/master' by 2 commits.
+                 *   (use "git push" to publish your local commits)
+                 */
             },
             diff: function(cmd) {
                 cmd.args.shift();
