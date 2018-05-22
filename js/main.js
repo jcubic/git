@@ -30,7 +30,8 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     window.fs = BrowserFS.BFSRequire('fs');
     window.path = BrowserFS.BFSRequire('path');
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js', {scope: '/git/'})
+        var scope = location.pathname.replace(/\/[^\/]+$/, '/');
+        navigator.serviceWorker.register('sw.js', {scope})
                  .then(function(reg) {
                      // registration worked
                      console.log('Registration succeeded. Scope is ' + reg.scope);
