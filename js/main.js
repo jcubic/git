@@ -70,6 +70,48 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         }
     }
     // -----------------------------------------------------------------------------------------------------
+    function gitDiff({dir, filepath}) {
+        var fname = dir + '/' + filepath;
+        return new Promise(function(resolve, reject) {
+            fs.readFile(fname, function(err, newFile) {
+                if (err) {
+                    return reject(err);
+                }
+                newFile = newFile.toString();
+                readBranchFile({fs, dir, branch, filepath}).then(oldFile => {
+                    const diff = JsDiff.structuredPatch(filepath, filepath, oldFile || '', newFile || '');
+                    resolve(diff);
+                }).catch(err => reject(err));
+            });
+        });
+    }
+    // -----------------------------------------------------------------------------------------------------
+    async function gitReset({dir, ref, branch}) {
+        var re = /^HEAD~([0-9]+)$/
+        var m = ref.match(re);
+        if (m) {
+            var count = +m[1];
+            var commits = await git.log({fs, dir, depth: count + 1});
+            var commit = commits.pop().oid;
+            return new Promise((resolve, reject) => {
+                fs.writeFile(dir + `/.git/refs/heads/${branch}`, commit, (err) => {
+                    if (err) {
+                        return reject(err);
+                    }
+                    // clear the index (if any)
+                    fs.unlink(dir + '/.git/index', (err) => {
+                        if (err) {
+                            return reject(err);
+                        }
+                        // checkout the branch into the working tree
+                        git.checkout({ dir, fs, ref: branch }).then(resolve);
+                    });
+                });
+            });
+        }
+        return Promise.reject(`Wrong ref ${ref}`);
+    }
+    // -----------------------------------------------------------------------------------------------------
     // return path for cd
     function get_path(string) {
         var path = cwd.replace(/^\//, '').split('/');
@@ -389,10 +431,46 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                     } else if (!name) {
                         term.error('You need to use git login first');
                     } else {
-                        return git.commit({fs, dir, author: {
-                            email: credentials.email,
-                            name
-                        }, message});
+                        return getAllStats({fs, branch}).then(list => {
+                            var statuses =  ['modified', 'deleted', 'added'];
+                            var modifications = list.filter(([_, status]) => statuses.includes(status));
+                            return Promise.all(modifications.map(([filepath]) => {
+                                return gitDiff({dir, filepath}).then(diff => ({filepath, diff}));
+                            }));
+                        }).then(list => {
+                            debugger;
+                            var modifications = list.reduce((acc, {diff: {hunks}}) => {
+                                hunks.forEach(function(hunk) {
+                                    hunk.lines.forEach((line) => {
+                                        if (line[0] === '-') {
+                                            acc.minus++;
+                                        } else if (line[0] === '+') {
+                                            acc.plus++;
+                                        }
+                                    });
+                                });
+                                return acc;
+                            }, {plus: 0, minus: 0});
+                            const plural = n => n == 1 ? '' : 's';
+                            return git.commit({
+                                fs,
+                                dir,
+                                author: {
+                                    email: credentials.email,
+                                    name
+                                },
+                                message
+                            }).then(sha => {
+                                var stat = [list.length + ' file' + plural(list.length)];
+                                if (modifications.plus) {
+                                    stat.push(`${modifications.plus} insertion${plural(modifications.plus)}(+)`);
+                                }
+                                if (modifications.minus) {
+                                    stat.push(`${modifications.minus} insertion${plural(modifications.minus)}(-)`);
+                                }
+                                term.echo(`[master ${sha.substring(0, 7)}] ${message}\n${stat.join(', ')}`);
+                            });
+                        });
                     }
                 }).catch(error);
             },
@@ -580,50 +658,40 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 cmd.args.shift();
                 term.pause();
                 function diff({dir, filepath}) {
-                    var fname = dir + '/' + filepath;
-                    return new Promise(function(resolve, reject) {
-                        fs.readFile(fname, function(err, newFile) {
-                            if (err) {
-                                return reject(err);
-                            }
-                            newFile = newFile.toString();
-                            readBranchFile({fs, dir, branch, filepath}).then(oldFile => {
-                                const diff = JsDiff.structuredPatch(filepath, filepath, oldFile || '', newFile || '');
-                                const text = diff.hunks.map(hunk => {
-                                    let output = [];
-                                    output.push(color(
-                                        'persian-green',
-                                        [
-                                            '@@ -',
-                                            hunk.oldStart,
-                                            ',',
-                                            hunk.oldLines,
-                                            ' +',
-                                            hunk.newStart,
-                                            ',',
-                                            hunk.newLines,
-                                            ' @@'
-                                        ].join('')
-                                    ));
-                                    output = output.concat(hunk.lines.map(line => {
-                                        let color_name;
-                                        if (line[0].match(/[+-]/)) {
-                                            color_name = line[0] == '-' ? 'red' : 'green';
-                                        }
-                                        if (color_name) {
-                                            return color(color_name, line);
-                                        } else {
-                                            return line;
-                                        }
-                                    }));
-                                    return output.join('\n');
-                                }).join('\n');
-                                resolve({
-                                    text,
-                                    filepath
-                                });
-                            }).catch(err => reject(err));
-                        });
+                    return gitDiff({dir, filepath}).then(diff => {
+                        const text = diff.hunks.map(hunk => {
+                            let output = [];
+                            output.push(color(
+                                'persian-green',
+                                [
+                                    '@@ -',
+                                    hunk.oldStart,
+                                    ',',
+                                    hunk.oldLines,
+                                    ' +',
+                                    hunk.newStart,
+                                    ',',
+                                    hunk.newLines,
+                                    ' @@'
+                                ].join('')
+                            ));
+                            output = output.concat(hunk.lines.map(line => {
+                                let color_name;
+                                if (line[0].match(/[+-]/)) {
+                                    color_name = line[0] == '-' ? 'red' : 'green';
+                                }
+                                if (color_name) {
+                                    return color(color_name, line);
+                                } else {
+                                    return line;
+                                }
+                            }));
+                            return output.join('\n');
+                        }).join('\n');
+                        return {
+                            text,
+                            filepath
+                        };
                     });
                 }
                 function format(diff) {
