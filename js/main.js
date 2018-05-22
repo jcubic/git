@@ -166,9 +166,13 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         });
     }
     // -----------------------------------------------------------------------------------------------------
-    function gitAddAll({fs, dir, branch}) {
+    function gitAddAll({fs, dir, branch, all}) {
         return getAllStats({fs, cwd: dir, branch}).then((files) => {
-            return files.filter(([_, status]) => !['unmodified', 'ignored'].includes(status));
+            var skip_status = ['unmodified', 'ignored'];
+            if (!all) {
+                skip_status.push('*added');
+            }
+            return files.filter(([_, status]) => !skip_status.includes(status));
         }).then((files) => {
             return Promise.all(files.map(([filepath]) => git.add({fs, dir, filepath})));
         });
@@ -395,10 +399,11 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             add: function(cmd) {
                 term.pause();
                 cmd.args.shift();
-                var all = cmd.args.filter(arg => arg.match(/^(-A|-all)$/)).length;
-                if (all) {
+                var all_git = cmd.args.filter(arg => arg.match(/^(-A|-all)$/)).length;
+                var all = !!cmd.args.filter(arg => arg === '.').length;
+                if (all || all_git) {
                     gitroot(cwd).then(dir => {
-                        return gitAddAll({fs, dir, branch});
+                        return gitAddAll({fs, dir, branch, all});
                     }).then(term.resume).catch(error);
                 } else if (cmd.args.length > 0) {
                     processGitFiles(cmd.args).then(({files, dir}) => {
