@@ -29,6 +29,16 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     }
     window.fs = BrowserFS.BFSRequire('fs');
     window.path = BrowserFS.BFSRequire('path');
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js', {scope: '/projects/jcubic/terminal/git/'})
+                 .then(function(reg) {
+                     // registration worked
+                     console.log('Registration succeeded. Scope is ' + reg.scope);
+                 }).catch(function(error) {
+                     // registration failed
+                     console.log('Registration failed with ' + error);
+                 });
+    }
     var dir = '/';
     var cwd = '/';
     var credentials = {};
@@ -438,7 +448,6 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                                 return gitDiff({dir, filepath}).then(diff => ({filepath, diff}));
                             }));
                         }).then(list => {
-                            debugger;
                             var modifications = list.reduce((acc, {diff: {hunks}}) => {
                                 hunks.forEach(function(hunk) {
                                     hunk.lines.forEach((line) => {
