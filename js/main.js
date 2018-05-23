@@ -457,10 +457,10 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 gitroot(cwd).then(dir => {
                     var all = !!cmd.args.filter(arg => arg.match(/^-.*a/)).length;
                     if (all) {
-                        return Promise.all([dir, gitAddAll({fs, dir, branch})]);
+                        return gitAddAll({fs, dir, branch}).then(() => dir);
                     }
-                    return [dir];
-                }).then(([dir]) => {
+                    return dir;
+                }).then((dir) => {
                     var message = getOption(/-.*m$/, cmd.args);
                     var name = credentials.fullname || credentials.username;
                     if (!message) {
@@ -504,6 +504,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                                 if (modifications.minus) {
                                     stat.push(`${modifications.minus} insertion${plural(modifications.minus)}(-)`);
                                 }
+                                // create mode 100644 git-webite-brand.svg
                                 term.echo(`[master ${sha.substring(0, 7)}] ${message}\n${stat.join(', ')}`);
                             });
                         });
@@ -883,6 +884,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 '\t[[!;;;;https://github.com/PrismJS/prism]PrimsJS] by Lea Verou',
                 '\t[[!;;;;https://momentjs.com]Momentjs] v. ' + moment.version,
                 '\t[[!;;;;https://github.com/kpdecker/jsdiff]jsdiff] by Kevin Decker',
+                '\t[[!;;;;https://github.com/softius/php-cross-domain-proxy]AJAX Cross Domain (PHP) Proxy] by Iacovos Constantinou',
                 '',
                 'Contributors:'
             ].concat(contributors.map(user => '\t[[!;;;;' + user.url + ']' + (user.fullname || user.name) + ']'));
