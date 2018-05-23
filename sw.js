@@ -12,6 +12,7 @@
  */
 
 self.addEventListener('install', function(evt) {
+    self.skipWaiting();
     self.importScripts('https://cdn.jsdelivr.net/npm/browserfs');
     (function loop() {
         if (typeof BrowserFS == 'undefined') {
@@ -37,15 +38,69 @@ self.addEventListener('fetch', function (event) {
         var m = event.request.url.match(/__browserfs__(.*)/);
         if (m && self.fs) {
             var path = m[1];
-            console.log(path);
-            fs.readFile(path, function(err, buffer) {
+            console.log('serving ' + path + ' from browserfs');
+            fs.stat(path, function(err, stat) {
                 if (err) {
-                    reject(err);
-                } else {
-                    resolve(new Response(buffer));
+                    return reject(err);
+                }
+                function sendFile(path) {
+                    fs.readFile(path, function(err, buffer) {
+                        if (err) {
+                            err.fn = 'readFile(' + path + ')';
+                            return reject(err);
+                        }
+                        resolve(new Response(buffer));
+                    });
+                }
+                if (stat.isFile()) {
+                    sendFile(path);
+                } else if (stat.isDirectory()) {
+                    fs.readdir(path, function(err, list) {
+                        if (err) {
+                            err.fn = 'readdir(' + path + ')';
+                            return reject(err);
+                        }
+                        var len = list.length;
+                        if (list.includes('index.html')) {
+                            sendFile(path + '/index.html');
+                        } else {
+                            var output = [
+                                '<!DCOTYPE html>',
+                                '<html>',
+                                '<body>',
+                                '<h1>BrowserFS</h1>',
+                                '<ul>'
+                            ];
+                            var m = path.match(/^\/(.*\/)[^\/]+\/?$/);
+                            if (m) {
+                                var parent = event.request.url.replace(/[^\/]+\/$/, '');
+                                output.push('<li><a href="' + parent + '">..</a></li>');
+                            }
+                            (function loop() {
+                                var file = list.shift();
+                                if (!file) {
+                                    output = output.concat(['</ul>', '</body>', '</html>']);
+                                    var blob = new Blob([output.join('\n')], {
+                                        type: 'text/html'
+                                    });
+                                    return resolve(new Response(blob));
+                                }
+                                fs.stat(path + '/' + file, function(err, stat) {
+                                    if (err) {
+                                        err.fn = 'stat(' + path + '/' + file + ')';
+                                        return reject(err);
+                                    }
+                                    var name = file + (stat.isDirectory() ? '/' : '');
+                                    output.push('<li><a href="' + name + '">' + name + '</a></li>');
+                                    loop();
+                                });
+                            })();
+                        }
+                    });
                 }
             });
         } else {
+            //request = credentials: 'include'
             fetch(event.request).then(resolve).catch(reject);
         }
     }));
