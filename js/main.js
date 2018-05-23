@@ -31,14 +31,16 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     window.path = BrowserFS.BFSRequire('path');
     if ('serviceWorker' in navigator) {
         var scope = location.pathname.replace(/\/[^\/]+$/, '/');
-        navigator.serviceWorker.register('sw.js', {scope})
-                 .then(function(reg) {
-                     // registration worked
-                     console.log('Registration succeeded. Scope is ' + reg.scope);
-                 }).catch(function(error) {
-                     // registration failed
-                     console.log('Registration failed with ' + error);
-                 });
+        if (!scope.match(/__browserfs__/)) {
+            navigator.serviceWorker.register('sw.js', {scope})
+                     .then(function(reg) {
+                         // registration worked
+                         console.log('Registration succeeded. Scope is ' + reg.scope);
+                     }).catch(function(error) {
+                         // registration failed
+                         console.log('Registration failed with ' + error);
+                     });
+        }
     }
     var dir = '/';
     var cwd = '/';
