@@ -26,11 +26,15 @@ self.addEventListener('install', function(evt) {
 
 self.addEventListener('fetch', function (event) {
     event.respondWith(new Promise(function(resolve, reject) {
-        var m = event.request.url.match(/__browserfs__(.*)/);
+        var url = event.request.url;
+        var m = url.match(/__browserfs__(.*)/);
+        function redirect_dir() {
+            return resolve(Response.redirect(url + '/', 301));
+        }
         if (m && self.fs) {
             var path = m[1];
             if (path === '') {
-                path = '/';
+                return redirect_dir();
             }
             console.log('serving ' + path + ' from browserfs');
             fs.stat(path, function(err, stat) {
@@ -49,6 +53,9 @@ self.addEventListener('fetch', function (event) {
                 if (stat.isFile()) {
                     sendFile(path);
                 } else if (stat.isDirectory()) {
+                    if (path.substr(-1, 1) !== '/') {
+                        return redirect_dir();
+                    }
                     fs.readdir(path, function(err, list) {
                         if (err) {
                             err.fn = 'readdir(' + path + ')';
