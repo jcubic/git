@@ -59,7 +59,7 @@ self.addEventListener('fetch', function (event) {
                             sendFile(path + '/index.html');
                         } else {
                             var output = [
-                                '<!DCOTYPE html>',
+                                '<!DOCTYPE html>',
                                 '<html>',
                                 '<body>',
                                 '<h1>BrowserFS</h1>',
