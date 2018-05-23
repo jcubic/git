@@ -130,6 +130,28 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         return Promise.reject(`Wrong ref ${ref}`);
     }
     // -----------------------------------------------------------------------------------------------------
+    function getHead({dir, gitdir, remote = false}) {
+        return new Promise((resolve, reject) => {
+            var base = `${dir}/${gitdir || '.git'}/`;
+            var ref_file = remote ? `${base}refs/remotes/origin/HEAD` : `${base}HEAD`;
+            fs.readFile(ref_file, function(err, data) {
+                var ref;
+                if (err) {
+                    //return reject(`can't read ${ref_file}: ${err}` );
+                    ref = 'refs/remotes/origin/master';
+                } else {
+                    ref = data.toString().match(/ref: (.*)/)[1];
+                }
+                fs.readFile(base + ref, function(err, data) {
+                    if (err) {
+                        return reject(`can't read ${base + ref}: ${err}`);
+                    }
+                    resolve(data.toString().trim());
+                });
+            });
+        });
+    }
+    // -----------------------------------------------------------------------------------------------------
     // return path for cd
     function get_path(string) {
         var path = cwd.replace(/^\//, '').split('/');
@@ -166,8 +188,9 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         var language = m[1];
                     }
                     if (!raw && language && Prism.languages[language]) {
+                        var file = data.toString();
                         var grammar = Prism.languages[language];
-                        var tokens = Prism.tokenize(data.toString(), grammar);
+                        var tokens = Prism.tokenize(file, grammar);
                         text = Prism.Token.stringify(tokens, language);
                     } else {
                         text = data.toString();
@@ -412,6 +435,9 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             }
         },
         git: {
+            pull: function(cmd) {
+
+            },
             push: function(cmd) {
                 if (credentials.username && credentials.password) {
                     term.pause();
@@ -428,7 +454,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                             authPassword: credentials.password,
                             emitter
                         });
-                    }).then(() => {
+                    }).then((sha) => {
                         /* TODO:
                          * To github.com:jcubic/git.git
                          *   3554a7a..00e7bae  gh-pages -> gh-pages
@@ -793,23 +819,46 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             log: function(cmd) {
                 var depth = getOption('-n', cmd.args);
                 depth = depth ? +depth : false;
+                function offset(offset) {
+                    return (offset > 1 ? '+' : '-') + ('0' + (offset / 60).toString().replace('.', '') + '00').slice(-4);
+                }
                 gitroot(cwd).then(dir => {
+                    return Promise.all([getHead({dir}), getHead({dir, remote: true})])
+                                  .then(([head, remote_head]) => ({ dir, head, remote_head }));
+                }).then(({dir, head, remote_head}) => {
                     function format(commit) {
-                        var output = []
-                        output.push(color('yellow', `commit ${commit.oid}`));
+                        var output = [];
+                        var suffix = '';
+                        if (head === remote_head && head === commit.oid) {
+                            suffix = [
+                                ' (' + color('persian-green', 'HEAD -> '),
+                                color('green', branch) + ',',
+                                color('red', 'origin/' + branch) + ')'
+                            ].join(' ');
+                        } else if (remote_head === commit.oid) {
+                            suffix = [
+                                ' (' + color('red', `origin/${branch}`) + ',',
+                                color('red', 'origin/HEAD') + ')'
+                            ].join(' ');
+                        } else if (head === commit.oid) {
+                            suffix = [
+                                ' (' + color('persian-green', 'HEAD -> '),
+                                color('green', branch) + ')'
+                            ].join(' ');
+                        }
+                        output.push(color('yellow', `commit ${commit.oid}` + suffix));
                         if (commit.author) {
                             output.push(`Author: ${commit.author.name} <${commit.author.email}>`);
-                            var offset = commit.author.timezoneOffset * -1;
-                            var t = (offset > 1 ? '+' : '-') + ('0' + (offset / 60).toString().replace('.', '') + '00').slice(-4);
-                            var date = moment.utc((commit.author.timestamp + (offset * 60 )) * 1000)
-                            .format('ddd MMM MM HH:mm:SS YYYY ') + t;
+                            var t = commit.author.timezoneOffset * -1;
+                            var date = moment.utc((commit.author.timestamp + (t * 60)) * 1000)
+                                             .format('ddd MMM MM HH:mm:SS YYYY ') + offset(t);
                             output.push(`Date: ${date}`);
                         }
                         output.push('');
                         output.push(`    ${commit.message}`);
                         return output.join('\n');
                     }
-                    git.log({fs, dir, depth, ref: branch}).then(commits => {
+                    return git.log({fs, dir, depth, ref: branch}).then(commits => {
                         var text = commits.map(format).join('\n\n');
                         if (text.length - 1 > term.rows()) {
                             term.less(text);
@@ -817,7 +866,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                             term.echo(text);
                         }
                     });
-                });
+                });//.catch(error);
             },
             clone: function(cmd) {
                 var url = 'https://jcubic.pl/proxy.php?' + cmd.args[1];
@@ -1109,7 +1158,7 @@ async function rmdir(dir) {
 
         var env = {
             type: o.type,
-            content: Token.stringify(o.content, language, parent),
+            content: _.Token.stringify(o.content, language, parent),
             tag: 'span',
             classes: ['token', o.type],
             attributes: {},
@@ -1131,8 +1180,9 @@ async function rmdir(dir) {
         var attributes = Object.keys(env.attributes).map(function(name) {
             return name + '="' + (env.attributes[name] || '').replace(/"/g, '&quot;') + '"';
         }).join(' ');
+
         return env.content.split(/\n/).map(function(content) {
-            return '[[b;;;' + env.classes.join(' ') + ']' + $.terminal.escape_brackets(content) + ']';
+            return '[[b;;;' + env.classes.join(' ') + ']' + content + ']';
         }).join('\n');
 
     };
@@ -1273,19 +1323,20 @@ function init_ymacs() {
         // -------------------------------------------------------------------------------------------------
         Ymacs.prototype.fs_getFileContents = function(name, nothrow, cont) {
             var self = this;
+            console.log(name);
             fs.stat(name, function(err, stat) {
                 if (err || !stat.isFile()) {
                     cont(null, null);
                 } else {
                     fs.readFile(name, function(err, file) {
-                        if (file === null) {
+                        if (err) {
                             if (!nothrow) {
                                 throw new Ymacs_Exception("File not found");
                             } else {
                                 self.getActiveBuffer().signalInfo("Can't open file");
                             }
                         } else {
-                            cont(file, file);
+                            cont(file.toString(), file.toString());
                         }
                     });
                 }
