@@ -22,7 +22,8 @@ Steps to make changes to remote git repo (tested with github):
 
 If you're working on web app you can open it from browser just prefix the path with `__browserfs__` the app
 is using service worker to serve files from browser fs. So if you clone this repo you will be able to view the local file
-using [https://jcubic.github.io/git/__browserfs__/git/index.html](https://jcubic.github.io/git/__browserfs__/git/index.html).
+using [https://jcubic.github.io/git/__browserfs__/git/](https://jcubic.github.io/git/__browserfs__/git/). If you open
+directory that don't have index.html it will display page with directory listing like normal we server.
 
 ### Contributors
 
