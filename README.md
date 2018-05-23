@@ -33,7 +33,8 @@ To see list of contributors you can check [credits command](https://jcubic.githu
 
 Proxy used to fetch files from remote repositories is located on my hosting
 [https://jcubic.pl/proxy.php](https://jcubic.pl/proxy.php). You can read the source code of that file
-[here](https://github.com/jcubic/git/blob/master/proxy.php).
+[here](https://github.com/jcubic/git/blob/357848672683d1959dbd1fa3d5023302a4151474/proxy.php) (it's in commit because
+I've needed to delete it because of GPL license).
 
 ### License
 
