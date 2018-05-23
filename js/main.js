@@ -837,10 +837,10 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                                 } else {
                                     clone();
                                 }
-                            })
+                            });
                         }
                     }
-                })
+                });
                 var emitter = new EventEmitter();
                 var index = null;
                 emitter.on('message', (message) => {
