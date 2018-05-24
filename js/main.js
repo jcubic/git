@@ -130,7 +130,12 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         return Promise.reject(`Wrong ref ${ref}`);
     }
     // -----------------------------------------------------------------------------------------------------
-    function getHead({dir, gitdir, remote = false}) {
+    function getHEAD({dir, gitdir, remote = false}) {
+        if (!remote) {
+            return git.resolveRef({fs, dir: 'test', ref: 'HEAD'});
+        } else {
+            //return git.resolveRef({fs, dir: 'test', ref: 'refs/remotes/origin/HEAD'});
+        }
         return new Promise((resolve, reject) => {
             var base = `${dir}/${gitdir || '.git'}/`;
             var ref_file = remote ? `${base}refs/remotes/origin/HEAD` : `${base}HEAD`;
@@ -823,7 +828,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                     return (offset > 1 ? '+' : '-') + ('0' + (offset / 60).toString().replace('.', '') + '00').slice(-4);
                 }
                 gitroot(cwd).then(dir => {
-                    return Promise.all([getHead({dir}), getHead({dir, remote: true})])
+                    return Promise.all([getHEAD({dir}), getHEAD({dir, remote: true})])
                                   .then(([head, remote_head]) => ({ dir, head, remote_head }));
                 }).then(({dir, head, remote_head}) => {
                     function format(commit) {
@@ -866,7 +871,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                             term.echo(text);
                         }
                     });
-                });//.catch(error);
+                }).catch(error);
             },
             clone: function(cmd) {
                 var url = 'https://jcubic.pl/proxy.php?' + cmd.args[1];

@@ -72,10 +72,8 @@ self.addEventListener('fetch', function (event) {
                                 '<h1>BrowserFS</h1>',
                                 '<ul>'
                             ];
-                            var m = path.match(/^\/(.*\/)[^\/]+\/?$/);
-                            if (m) {
-                                var parent = event.request.url.replace(/[^\/]+\/$/, '');
-                                output.push('<li><a href="' + parent + '">..</a></li>');
+                            if (path.match(/^\/(.*\/)/)) {
+                                output.push('<li><a href="..">..</a></li>');
                             }
                             (function loop() {
                                 var file = list.shift();
