@@ -26,6 +26,15 @@ self.addEventListener('install', function(evt) {
 
 self.addEventListener('fetch', function (event) {
     event.respondWith(new Promise(function(resolve, reject) {
+        function sendFile(path) {
+            fs.readFile(path, function(err, buffer) {
+                if (err) {
+                    err.fn = 'readFile(' + path + ')';
+                    return reject(err);
+                }
+                resolve(new Response(buffer));
+            });
+        }
         var url = event.request.url;
         var m = url.match(/__browserfs__(.*)/);
         function redirect_dir() {
@@ -39,16 +48,7 @@ self.addEventListener('fetch', function (event) {
             console.log('serving ' + path + ' from browserfs');
             fs.stat(path, function(err, stat) {
                 if (err) {
-                    return reject(err);
-                }
-                function sendFile(path) {
-                    fs.readFile(path, function(err, buffer) {
-                        if (err) {
-                            err.fn = 'readFile(' + path + ')';
-                            return reject(err);
-                        }
-                        resolve(new Response(buffer));
-                    });
+                    return resolve(textResponse(error404(path)));
                 }
                 if (stat.isFile()) {
                     sendFile(path);
@@ -79,10 +79,7 @@ self.addEventListener('fetch', function (event) {
                                 var file = list.shift();
                                 if (!file) {
                                     output = output.concat(['</ul>', '</body>', '</html>']);
-                                    var blob = new Blob([output.join('\n')], {
-                                        type: 'text/html'
-                                    });
-                                    return resolve(new Response(blob));
+                                    return resolve(textResponse(output.join('\n')));
                                 }
                                 fs.stat(path + '/' + file, function(err, stat) {
                                     if (err) {
@@ -104,3 +101,22 @@ self.addEventListener('fetch', function (event) {
         }
     }));
 });
+function textResponse(string) {
+    var blob = new Blob([string], {
+        type: 'text/html'
+    });
+    return new Response(blob);
+}
+
+function error404(path) {
+    var output = [
+        '<!DOCTYPE html>',
+        '<html>',
+        '<body>',
+        '<h1>404 File Not Found</h1>',
+        `<p>File ${path} not found in browserfs`,
+        '</body>',
+        '</html>'
+    ];
+    return output.join('\n');
+}

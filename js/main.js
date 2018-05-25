@@ -849,10 +849,10 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                             ].join(' ');
                         }
                         output.push(color('yellow', `commit ${commit.oid}` + suffix));
-                        var author = commit.author;
-                        if (author) {
-                            output.push(`Author: ${author.name} <${author.email}>`);
-                            output.push(`Date: ${date(author.timestamp, author.timezoneOffset)}`);
+                        var committer = commit.committer;
+                        if (committer) {
+                            output.push(`Author: ${committer.name} <${committer.email}>`);
+                            output.push(`Date: ${date(committer.timestamp, committer.timezoneOffset)}`);
                         }
                         output.push('');
                         output.push(`    ${commit.message}`);
@@ -1444,5 +1444,36 @@ function init_ymacs() {
             };
         });
         return ymacs;
+    });
+}
+
+function getURL({fs, dir, remote = 'origin'}) {
+    return new Promise((resolve, reject) => {
+        fs.readFile(dir + '/.git/config', function(err, data) {
+            if (err) {
+                return reject(`${dir} is not git repo: ${err}`);
+            }
+            var re = new RegExp(`\\[\s*remote\\s*"${remote}"\s*\\]`);
+            var url = data.toString('utf8').split(/\s*(\[[^\]]+\])s*/).reduce((acc, part) => {
+                if (acc === null || typeof acc === 'string') {
+                    return acc;
+                } else if (part.match(re)) {
+                    return true;
+                } else if (acc === true) {
+                    try {
+                        var url_line = part.split(/\n/).map(line => line.trim())
+                            .filter(line => line.match(/^url/))[0];
+                        return url_line.match(/url\s*=\s*(.*)/)[1];
+                    } catch(e) {
+                        return null;
+                    }
+                }
+            }, false);
+            if (url) {
+                resolve(url);
+            } else {
+                reject('No remote url found');
+            }
+        });
     });
 }
