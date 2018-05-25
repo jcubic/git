@@ -14,47 +14,48 @@
 self.addEventListener('install', function(evt) {
     self.skipWaiting();
     self.importScripts('https://cdn.jsdelivr.net/npm/browserfs');
-    (function loop() {
-        if (typeof BrowserFS == 'undefined') {
-            console.log('no browserFS');
-            setTimeout(loop, 500);
+    BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
+        if (err) {
+            console.log(err);
         } else {
-            BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
-                if (err) {
-                    console.log(err);
-                } else {
-                    self.fs = BrowserFS.BFSRequire('fs');
-                    self.path = BrowserFS.BFSRequire('path');
-                }
-            });
+            self.fs = BrowserFS.BFSRequire('fs');
+            self.path = BrowserFS.BFSRequire('path');
         }
-    })();
+    });
 });
-var base = self.registration.scope;
-var re = new RegExp('^' + base);
 
 self.addEventListener('fetch', function (event) {
     event.respondWith(new Promise(function(resolve, reject) {
-        var m = event.request.url.match(/__browserfs__(.*)/);
+        function sendFile(path) {
+            fs.readFile(path, function(err, buffer) {
+                if (err) {
+                    err.fn = 'readFile(' + path + ')';
+                    return reject(err);
+                }
+                resolve(new Response(buffer));
+            });
+        }
+        var url = event.request.url;
+        var m = url.match(/__browserfs__(.*)/);
+        function redirect_dir() {
+            return resolve(Response.redirect(url + '/', 301));
+        }
         if (m && self.fs) {
             var path = m[1];
+            if (path === '') {
+                return redirect_dir();
+            }
             console.log('serving ' + path + ' from browserfs');
             fs.stat(path, function(err, stat) {
                 if (err) {
-                    return reject(err);
-                }
-                function sendFile(path) {
-                    fs.readFile(path, function(err, buffer) {
-                        if (err) {
-                            err.fn = 'readFile(' + path + ')';
-                            return reject(err);
-                        }
-                        resolve(new Response(buffer));
-                    });
+                    return resolve(textResponse(error404(path)));
                 }
                 if (stat.isFile()) {
                     sendFile(path);
                 } else if (stat.isDirectory()) {
+                    if (path.substr(-1, 1) !== '/') {
+                        return redirect_dir();
+                    }
                     fs.readdir(path, function(err, list) {
                         if (err) {
                             err.fn = 'readdir(' + path + ')';
@@ -65,25 +66,20 @@ self.addEventListener('fetch', function (event) {
                             sendFile(path + '/index.html');
                         } else {
                             var output = [
-                                '<!DCOTYPE html>',
+                                '<!DOCTYPE html>',
                                 '<html>',
                                 '<body>',
                                 '<h1>BrowserFS</h1>',
                                 '<ul>'
                             ];
-                            var m = path.match(/^\/(.*\/)[^\/]+\/?$/);
-                            if (m) {
-                                var parent = event.request.url.replace(/[^\/]+\/$/, '');
-                                output.push('<li><a href="' + parent + '">..</a></li>');
+                            if (path.match(/^\/(.*\/)/)) {
+                                output.push('<li><a href="..">..</a></li>');
                             }
                             (function loop() {
                                 var file = list.shift();
                                 if (!file) {
                                     output = output.concat(['</ul>', '</body>', '</html>']);
-                                    var blob = new Blob([output.join('\n')], {
-                                        type: 'text/html'
-                                    });
-                                    return resolve(new Response(blob));
+                                    return resolve(textResponse(output.join('\n')));
                                 }
                                 fs.stat(path + '/' + file, function(err, stat) {
                                     if (err) {
@@ -105,3 +101,22 @@ self.addEventListener('fetch', function (event) {
         }
     }));
 });
+function textResponse(string) {
+    var blob = new Blob([string], {
+        type: 'text/html'
+    });
+    return new Response(blob);
+}
+
+function error404(path) {
+    var output = [
+        '<!DOCTYPE html>',
+        '<html>',
+        '<body>',
+        '<h1>404 File Not Found</h1>',
+        `<p>File ${path} not found in browserfs`,
+        '</body>',
+        '</html>'
+    ];
+    return output.join('\n');
+}

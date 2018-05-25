@@ -130,6 +130,33 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         return Promise.reject(`Wrong ref ${ref}`);
     }
     // -----------------------------------------------------------------------------------------------------
+    function getHEAD({dir, gitdir, remote = false}) {
+        if (!remote) {
+            return git.resolveRef({fs, dir: 'test', ref: 'HEAD'});
+        } else {
+            //return git.resolveRef({fs, dir: 'test', ref: 'refs/remotes/origin/HEAD'});
+        }
+        return new Promise((resolve, reject) => {
+            var base = `${dir}/${gitdir || '.git'}/`;
+            var ref_file = remote ? `${base}refs/remotes/origin/HEAD` : `${base}HEAD`;
+            fs.readFile(ref_file, function(err, data) {
+                var ref;
+                if (err) {
+                    //return reject(`can't read ${ref_file}: ${err}` );
+                    ref = 'refs/remotes/origin/master';
+                } else {
+                    ref = data.toString().match(/ref: (.*)/)[1];
+                }
+                fs.readFile(base + ref, function(err, data) {
+                    if (err) {
+                        return reject(`can't read ${base + ref}: ${err}`);
+                    }
+                    resolve(data.toString().trim());
+                });
+            });
+        });
+    }
+    // -----------------------------------------------------------------------------------------------------
     // return path for cd
     function get_path(string) {
         var path = cwd.replace(/^\//, '').split('/');
@@ -166,8 +193,9 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         var language = m[1];
                     }
                     if (!raw && language && Prism.languages[language]) {
+                        var file = data.toString();
                         var grammar = Prism.languages[language];
-                        var tokens = Prism.tokenize(data.toString(), grammar);
+                        var tokens = Prism.tokenize(file, grammar);
                         text = Prism.Token.stringify(tokens, language);
                     } else {
                         text = data.toString();
@@ -412,6 +440,9 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             }
         },
         git: {
+            pull: function(cmd) {
+
+            },
             push: function(cmd) {
                 if (credentials.username && credentials.password) {
                     term.pause();
@@ -428,7 +459,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                             authPassword: credentials.password,
                             emitter
                         });
-                    }).then(() => {
+                    }).then((sha) => {
                         /* TODO:
                          * To github.com:jcubic/git.git
                          *   3554a7a..00e7bae  gh-pages -> gh-pages
@@ -457,10 +488,10 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 gitroot(cwd).then(dir => {
                     var all = !!cmd.args.filter(arg => arg.match(/^-.*a/)).length;
                     if (all) {
-                        return Promise.all([dir, gitAddAll({fs, dir, branch})]);
+                        return gitAddAll({fs, dir, branch}).then(() => dir);
                     }
-                    return [dir];
-                }).then(([dir]) => {
+                    return dir;
+                }).then((dir) => {
                     var message = getOption(/-.*m$/, cmd.args);
                     var name = credentials.fullname || credentials.username;
                     if (!message) {
@@ -504,6 +535,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                                 if (modifications.minus) {
                                     stat.push(`${modifications.minus} insertion${plural(modifications.minus)}(-)`);
                                 }
+                                // create mode 100644 git-webite-brand.svg
                                 term.echo(`[master ${sha.substring(0, 7)}] ${message}\n${stat.join(', ')}`);
                             });
                         });
@@ -793,22 +825,40 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 var depth = getOption('-n', cmd.args);
                 depth = depth ? +depth : false;
                 gitroot(cwd).then(dir => {
+                    return Promise.all([getHEAD({dir}), getHEAD({dir, remote: true})])
+                                  .then(([head, remote_head]) => ({ dir, head, remote_head }));
+                }).then(({dir, head, remote_head}) => {
                     function format(commit) {
-                        var output = []
-                        output.push(color('yellow', `commit ${commit.oid}`));
-                        if (commit.author) {
-                            output.push(`Author: ${commit.author.name} <${commit.author.email}>`);
-                            var offset = commit.author.timezoneOffset * -1;
-                            var t = (offset > 1 ? '+' : '-') + ('0' + (offset / 60).toString().replace('.', '') + '00').slice(-4);
-                            var date = moment.utc((commit.author.timestamp + (offset * 60 )) * 1000)
-                            .format('ddd MMM MM HH:mm:SS YYYY ') + t;
-                            output.push(`Date: ${date}`);
+                        var output = [];
+                        var suffix = '';
+                        if (head === remote_head && head === commit.oid) {
+                            suffix = [
+                                ' (' + color('persian-green', 'HEAD -> '),
+                                color('green', branch) + ',',
+                                color('red', 'origin/' + branch) + ')'
+                            ].join(' ');
+                        } else if (remote_head === commit.oid) {
+                            suffix = [
+                                ' (' + color('red', `origin/${branch}`) + ',',
+                                color('red', 'origin/HEAD') + ')'
+                            ].join(' ');
+                        } else if (head === commit.oid) {
+                            suffix = [
+                                ' (' + color('persian-green', 'HEAD -> '),
+                                color('green', branch) + ')'
+                            ].join(' ');
+                        }
+                        output.push(color('yellow', `commit ${commit.oid}` + suffix));
+                        var committer = commit.committer;
+                        if (committer) {
+                            output.push(`Author: ${committer.name} <${committer.email}>`);
+                            output.push(`Date: ${date(committer.timestamp, committer.timezoneOffset)}`);
                         }
                         output.push('');
                         output.push(`    ${commit.message}`);
                         return output.join('\n');
                     }
-                    git.log({fs, dir, depth, ref: branch}).then(commits => {
+                    return git.log({fs, dir, depth, ref: branch}).then(commits => {
                         var text = commits.map(format).join('\n\n');
                         if (text.length - 1 > term.rows()) {
                             term.less(text);
@@ -816,7 +866,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                             term.echo(text);
                         }
                     });
-                });
+                }).catch(error);
             },
             clone: function(cmd) {
                 var url = 'https://jcubic.pl/proxy.php?' + cmd.args[1];
@@ -836,10 +886,10 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                                 } else {
                                     clone();
                                 }
-                            })
+                            });
                         }
                     }
-                })
+                });
                 var emitter = new EventEmitter();
                 var index = null;
                 emitter.on('message', (message) => {
@@ -881,8 +931,8 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 '\t[[!;;;;https://github.com/jcubic/jsvi]jsvi] originaly by Internet Connection, Inc. with changes from Jakub Jankiewicz',
                 '\t[[!;;;;https://github.com/Olical/EventEmitter/]EventEmitter] by Oliver Caldwell',
                 '\t[[!;;;;https://github.com/PrismJS/prism]PrimsJS] by Lea Verou',
-                '\t[[!;;;;https://momentjs.com]Momentjs] v. ' + moment.version,
                 '\t[[!;;;;https://github.com/kpdecker/jsdiff]jsdiff] by Kevin Decker',
+                '\t[[!;;;;https://github.com/softius/php-cross-domain-proxy]AJAX Cross Domain (PHP) Proxy] by Iacovos Constantinou',
                 '',
                 'Contributors:'
             ].concat(contributors.map(user => '\t[[!;;;;' + user.url + ']' + (user.fullname || user.name) + ']'));
@@ -1107,7 +1157,7 @@ async function rmdir(dir) {
 
         var env = {
             type: o.type,
-            content: Token.stringify(o.content, language, parent),
+            content: _.Token.stringify(o.content, language, parent),
             tag: 'span',
             classes: ['token', o.type],
             attributes: {},
@@ -1129,8 +1179,9 @@ async function rmdir(dir) {
         var attributes = Object.keys(env.attributes).map(function(name) {
             return name + '="' + (env.attributes[name] || '').replace(/"/g, '&quot;') + '"';
         }).join(' ');
+
         return env.content.split(/\n/).map(function(content) {
-            return '[[b;;;' + env.classes.join(' ') + ']' + $.terminal.escape_brackets(content) + ']';
+            return '[[b;;;' + env.classes.join(' ') + ']' + content + ']';
         }).join('\n');
 
     };
@@ -1187,6 +1238,28 @@ async function readBranchFile({ dir, fs, filepath, branch }) {
     })(tree, filepath.split('/'));
 }
 
+function date(timestamp, timezoneOffset) {
+    timezoneOffset *= -1;
+    var d = new Date(timestamp * 1000);
+    var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    var months = [
+        'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+        'September', 'October', 'November', 'December'
+    ];
+    var day = days[d.getDay()].substring(0, 3);
+    var month = months[d.getMonth()].substring(0, 3);
+    const padleft = (input, str, n) => (new Array(n + 1).join(str) + input).slice(-n);
+    const pad = (input) => padleft(input, '0', 2);
+    function offset(offset) {
+        var timezone = ('0' + (offset / 60).toString().replace('.', '') + '00').slice(-4);
+        return (offset > 1 ? '+' : '-') + timezone;
+    }
+    return [day, month, pad(d.getDate()),
+            [pad(d.getHours()), pad(d.getMinutes()), pad(d.getSeconds())].join(':'),
+            d.getFullYear(),
+            offset(timezoneOffset)
+    ].join(' ');
+}
 // ---------------------------------------------------------------------------------------------------------
 function init_ymacs() {
     var root = 'https://rawgit.com/jcubic/leash/master/lib/apps/ymacs/';
@@ -1271,19 +1344,20 @@ function init_ymacs() {
         // -------------------------------------------------------------------------------------------------
         Ymacs.prototype.fs_getFileContents = function(name, nothrow, cont) {
             var self = this;
+            console.log(name);
             fs.stat(name, function(err, stat) {
                 if (err || !stat.isFile()) {
                     cont(null, null);
                 } else {
                     fs.readFile(name, function(err, file) {
-                        if (file === null) {
+                        if (err) {
                             if (!nothrow) {
                                 throw new Ymacs_Exception("File not found");
                             } else {
                                 self.getActiveBuffer().signalInfo("Can't open file");
                             }
                         } else {
-                            cont(file, file);
+                            cont(file.toString(), file.toString());
                         }
                     });
                 }
@@ -1370,5 +1444,36 @@ function init_ymacs() {
             };
         });
         return ymacs;
+    });
+}
+
+function getURL({fs, dir, remote = 'origin'}) {
+    return new Promise((resolve, reject) => {
+        fs.readFile(dir + '/.git/config', function(err, data) {
+            if (err) {
+                return reject(`${dir} is not git repo: ${err}`);
+            }
+            var re = new RegExp(`\\[\s*remote\\s*"${remote}"\s*\\]`);
+            var url = data.toString('utf8').split(/\s*(\[[^\]]+\])s*/).reduce((acc, part) => {
+                if (acc === null || typeof acc === 'string') {
+                    return acc;
+                } else if (part.match(re)) {
+                    return true;
+                } else if (acc === true) {
+                    try {
+                        var url_line = part.split(/\n/).map(line => line.trim())
+                            .filter(line => line.match(/^url/))[0];
+                        return url_line.match(/url\s*=\s*(.*)/)[1];
+                    } catch(e) {
+                        return null;
+                    }
+                }
+            }, false);
+            if (url) {
+                resolve(url);
+            } else {
+                reject('No remote url found');
+            }
+        });
     });
 }
