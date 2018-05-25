@@ -2,8 +2,8 @@
 
 This project was created using [isomorphic-git](https://github.com/isomorphic-git/isomorphic-git) and other
 libraries, you can check which ones was used when you
-[follow this link](https://jcubic.github.io/git/#[[0,1,"credits"]]) that will execute
-`credits` command in terminal.
+<a href="https://jcubic.github.io/git/#&#91;&#91;0,1,&quot;credits&quot;&#93;&#93;">follow this link</a>
+that will execute `credits` command in terminal.
 
 First version of the app was created on [codepen](https://codepen.io/jcubic/pen/Gddxpg).
 
@@ -27,7 +27,8 @@ display page with directory listing like normal web server.
 
 ### Contributors
 
-To see list of contributors you can check [credits command](https://jcubic.github.io/git/#[[0,1,"credits"]]).
+To see list of contributors you can check
+<a href="https://jcubic.github.io/git/#&#91;&#91;0,1,&quot;credits&quot;&#93;&#93;">credits command</a>.
 
 ### Proxy
 
