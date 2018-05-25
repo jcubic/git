@@ -50,6 +50,12 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     var dir = '/';
     var cwd = '/';
     var credentials = {};
+    ['username', 'email', 'fullname'].forEach((name) => {
+        const value = localStorage.getItem('git_' + name);
+        if (value) {
+            credentials[name] = value;
+        }
+    });
     var branch;
     // -----------------------------------------------------------------------------------------------------
     function color(name, string) {
@@ -128,6 +134,10 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             });
         }
         return Promise.reject(`Wrong ref ${ref}`);
+    }
+    async function getURL({fs, dir, gitdir = path.join(dir, '.git'), remote = 'origin'}) {
+        var url = await git.config({fs, gitdir, path: `remote.${remote}.url`});
+        return url.replace(/^https:\/\/jcubic.pl\/proxy.php\?/, '');
     }
     // -----------------------------------------------------------------------------------------------------
     function getHEAD({dir, gitdir, remote = false}) {
@@ -440,18 +450,46 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             }
         },
         git: {
-            pull: function(cmd) {
-
+            reset: function(cmd) {
+                term.echo('to be implemented');
             },
-            push: function(cmd) {
+            pull: function(cmd) {
+                term.echo('to be implemented');
+            },
+            checkout: function(cmd) {
+                term.echo('to be implemented');
+                /* TODO:
+                 *
+                 * Switched to branch 'gh-pages'
+                 * Your branch is up-to-date with 'origin/gh-pages'.
+                 *
+                 * Switched to a new branch 'test'
+                 *
+                 * Switched to branch 'master'
+                 * Your branch is ahead of 'origin/master' by 2 commits.
+                 *   (use "git push" to publish your local commits)
+                 */
+            },
+            push: async function(cmd) {
                 if (credentials.username && credentials.password) {
                     term.pause();
                     var emitter = new EventEmitter();
                     emitter.on('message', (message) => {
                         term.echo(message);
                     });
-                    gitroot(cwd).then(dir => {
-                        return git.push({
+                    try {
+                        var dir = await gitroot(cwd);
+                        var url = await getURL({fs, dir});
+                        var branches = await git.listBranches({fs, dir, remote: 'origin'});
+                        var output = [`To ${url}`];
+                        if (branches.includes(branch)) {
+                            var ref = await git.resolveRef({fs, dir, ref: `refs/remotes/origin/${branch}`});
+                            var HEAD = await git.resolveRef({fs, dir, ref: 'HEAD'});
+                            output.push(`   ${ref.substring(0, 7)}..${HEAD.substring(0, 7)} ${branch} -> ${branch}`);
+                        } else {
+                            output.push(` * [new branch]      ${branch} -> ${branch}`);
+                        }
+                        await git.push({
                             fs,
                             dir,
                             ref: branch,
@@ -459,32 +497,19 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                             authPassword: credentials.password,
                             emitter
                         });
-                    }).then((sha) => {
-                        /* TODO:
-                         * To github.com:jcubic/git.git
-                         *   3554a7a..00e7bae  gh-pages -> gh-pages
-                         *
-                         * kuba@jcubic:~/projects/jcubic/terminal/git$ git log
-                         * commit 00e7bae75c1bb8805a04c1e898444dbbb3b2b6d5 (HEAD -> gh-pages, origin/gh-pages)
-                         * Author: Jakub Jankiewicz <jcubic@onet.pl>
-                         * Date:   Tue May 22 22:36:50 2018 +0200
-                         *
-                         *    fix function name
-                         *
-                         *commit 3554a7aa7bfad8a98a75ed7714bd9f972571a17a
-                         *Author: Jakub Jankiewicz <jcubic@onet.pl>
-                         * Date:   Tue May 22 22:28:11 2018 +0200
-                         *
-                         *    prepare scope for meta service worker
-                         */
-                        term.echo();
-                    }).catch(error);
+                        term.echo(output.join('\n'));
+                    } catch (e) {
+                        term.error(e.message || e);
+                    } finally {
+                        term.resume();
+                    }
                 } else {
                     term.error('You need to call `git login` to set username and password before push');
                 }
             },
             commit: function(cmd) {
                 cmd.args.shift();
+                term.pause();
                 gitroot(cwd).then(dir => {
                     var all = !!cmd.args.filter(arg => arg.match(/^-.*a/)).length;
                     if (all) {
@@ -540,7 +565,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                             });
                         });
                     }
-                }).catch(error);
+                }).then(term.resume).catch(error);
             },
             add: function(cmd) {
                 term.pause();
@@ -728,20 +753,6 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         term.resume();
                     }
                 }).catch(error);
-            },
-            checkout: function(cmd) {
-                term.echo('to be implemented');
-                /* TODO:
-                 *
-                 * Switched to branch 'gh-pages'
-                 * Your branch is up-to-date with 'origin/gh-pages'.
-                 *
-                 * Switched to a new branch 'test'
-                 *
-                 * Switched to branch 'master'
-                 * Your branch is ahead of 'origin/master' by 2 commits.
-                 *   (use "git push" to publish your local commits)
-                 */
             },
             diff: function(cmd) {
                 cmd.args.shift();
@@ -1444,36 +1455,5 @@ function init_ymacs() {
             };
         });
         return ymacs;
-    });
-}
-
-function getURL({fs, dir, remote = 'origin'}) {
-    return new Promise((resolve, reject) => {
-        fs.readFile(dir + '/.git/config', function(err, data) {
-            if (err) {
-                return reject(`${dir} is not git repo: ${err}`);
-            }
-            var re = new RegExp(`\\[\s*remote\\s*"${remote}"\s*\\]`);
-            var url = data.toString('utf8').split(/\s*(\[[^\]]+\])s*/).reduce((acc, part) => {
-                if (acc === null || typeof acc === 'string') {
-                    return acc;
-                } else if (part.match(re)) {
-                    return true;
-                } else if (acc === true) {
-                    try {
-                        var url_line = part.split(/\n/).map(line => line.trim())
-                            .filter(line => line.match(/^url/))[0];
-                        return url_line.match(/url\s*=\s*(.*)/)[1];
-                    } catch(e) {
-                        return null;
-                    }
-                }
-            }, false);
-            if (url) {
-                resolve(url);
-            } else {
-                reject('No remote url found');
-            }
-        });
     });
 }
