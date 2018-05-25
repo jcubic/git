@@ -824,9 +824,6 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             log: function(cmd) {
                 var depth = getOption('-n', cmd.args);
                 depth = depth ? +depth : false;
-                function offset(offset) {
-                    return (offset > 1 ? '+' : '-') + ('0' + (offset / 60).toString().replace('.', '') + '00').slice(-4);
-                }
                 gitroot(cwd).then(dir => {
                     return Promise.all([getHEAD({dir}), getHEAD({dir, remote: true})])
                                   .then(([head, remote_head]) => ({ dir, head, remote_head }));
@@ -852,12 +849,10 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                             ].join(' ');
                         }
                         output.push(color('yellow', `commit ${commit.oid}` + suffix));
-                        if (commit.author) {
-                            output.push(`Author: ${commit.author.name} <${commit.author.email}>`);
-                            var t = commit.author.timezoneOffset * -1;
-                            var date = moment.utc((commit.author.timestamp + (t * 60)) * 1000)
-                                             .format('ddd MMM MM HH:mm:SS YYYY ') + offset(t);
-                            output.push(`Date: ${date}`);
+                        var author = commit.author;
+                        if (author) {
+                            output.push(`Author: ${author.name} <${author.email}>`);
+                            output.push(`Date: ${date(author.timestamp, author.timezoneOffset)}`);
                         }
                         output.push('');
                         output.push(`    ${commit.message}`);
@@ -936,7 +931,6 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 '\t[[!;;;;https://github.com/jcubic/jsvi]jsvi] originaly by Internet Connection, Inc. with changes from Jakub Jankiewicz',
                 '\t[[!;;;;https://github.com/Olical/EventEmitter/]EventEmitter] by Oliver Caldwell',
                 '\t[[!;;;;https://github.com/PrismJS/prism]PrimsJS] by Lea Verou',
-                '\t[[!;;;;https://momentjs.com]Momentjs] v. ' + moment.version,
                 '\t[[!;;;;https://github.com/kpdecker/jsdiff]jsdiff] by Kevin Decker',
                 '\t[[!;;;;https://github.com/softius/php-cross-domain-proxy]AJAX Cross Domain (PHP) Proxy] by Iacovos Constantinou',
                 '',
@@ -1244,6 +1238,28 @@ async function readBranchFile({ dir, fs, filepath, branch }) {
     })(tree, filepath.split('/'));
 }
 
+function date(timestamp, timezoneOffset) {
+    timezoneOffset *= -1;
+    var d = new Date(timestamp * 1000);
+    var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    var months = [
+        'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+        'September', 'October', 'November', 'December'
+    ];
+    var day = days[d.getDay()].substring(0, 3);
+    var month = months[d.getMonth()].substring(0, 3);
+    const padleft = (input, str, n) => (new Array(n + 1).join(str) + input).slice(-n);
+    const pad = (input) => padleft(input, '0', 2);
+    function offset(offset) {
+        var timezone = ('0' + (offset / 60).toString().replace('.', '') + '00').slice(-4);
+        return (offset > 1 ? '+' : '-') + timezone;
+    }
+    return [day, month, pad(d.getDate()),
+            [pad(d.getHours()), pad(d.getMinutes()), pad(d.getSeconds())].join(':'),
+            d.getFullYear(),
+            offset(timezoneOffset)
+    ].join(' ');
+}
 // ---------------------------------------------------------------------------------------------------------
 function init_ymacs() {
     var root = 'https://rawgit.com/jcubic/leash/master/lib/apps/ymacs/';
