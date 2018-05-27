@@ -76,96 +76,19 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         }
     }
     // -----------------------------------------------------------------------------------------------------
+    function messageEmitter() {
+        var emitter = new EventEmitter();
+        emitter.on('message', (message) => {
+            term.echo(message);
+        });
+        return emitter;
+    }
+    // -----------------------------------------------------------------------------------------------------
     function list(path) {
         term.pause();
         return listDir(path).then((list) => (term.resume(), list));
     }
-    // -----------------------------------------------------------------------------------------------------
-    function gitroot(cwd) {
-        return git.findRoot({fs, filepath: cwd});
-    }
-    // -----------------------------------------------------------------------------------------------------
-    async function gitBranch() {
-        try {
-            var dir = await gitroot(cwd);
-            var ref = await git.resolveRef({fs, dir, ref: 'HEAD', depth: 1});
-            return ref.match(/ref: refs\/heads\/(.*)/)[1];
-        } catch(e) {
-        }
-    }
-    // -----------------------------------------------------------------------------------------------------
-    function gitDiff({dir, filepath}) {
-        var fname = dir + '/' + filepath;
-        return new Promise(function(resolve, reject) {
-            fs.readFile(fname, function(err, newFile) {
-                if (err) {
-                    return reject(err);
-                }
-                newFile = newFile.toString();
-                readBranchFile({fs, dir, branch, filepath}).then(oldFile => {
-                    const diff = JsDiff.structuredPatch(filepath, filepath, oldFile || '', newFile || '');
-                    resolve(diff);
-                }).catch(err => reject(err));
-            });
-        });
-    }
-    // -----------------------------------------------------------------------------------------------------
-    async function gitReset({dir, ref, branch}) {
-        var re = /^HEAD~([0-9]+)$/
-        var m = ref.match(re);
-        if (m) {
-            var count = +m[1];
-            var commits = await git.log({fs, dir, depth: count + 1});
-            var commit = commits.pop().oid;
-            return new Promise((resolve, reject) => {
-                fs.writeFile(dir + `/.git/refs/heads/${branch}`, commit, (err) => {
-                    if (err) {
-                        return reject(err);
-                    }
-                    // clear the index (if any)
-                    fs.unlink(dir + '/.git/index', (err) => {
-                        if (err) {
-                            return reject(err);
-                        }
-                        // checkout the branch into the working tree
-                        git.checkout({ dir, fs, ref: branch }).then(resolve);
-                    });
-                });
-            });
-        }
-        return Promise.reject(`Wrong ref ${ref}`);
-    }
-    async function getURL({fs, dir, gitdir = path.join(dir, '.git'), remote = 'origin'}) {
-        var url = await git.config({fs, gitdir, path: `remote.${remote}.url`});
-        return url.replace(/^https:\/\/jcubic.pl\/proxy.php\?/, '');
-    }
-    // -----------------------------------------------------------------------------------------------------
-    function getHEAD({dir, gitdir, remote = false}) {
-        if (!remote) {
-            return git.resolveRef({fs, dir: 'test', ref: 'HEAD'});
-        } else {
-            //return git.resolveRef({fs, dir: 'test', ref: 'refs/remotes/origin/HEAD'});
-        }
-        return new Promise((resolve, reject) => {
-            var base = `${dir}/${gitdir || '.git'}/`;
-            var ref_file = remote ? `${base}refs/remotes/origin/HEAD` : `${base}HEAD`;
-            fs.readFile(ref_file, function(err, data) {
-                var ref;
-                if (err) {
-                    //return reject(`can't read ${ref_file}: ${err}` );
-                    ref = 'refs/remotes/origin/master';
-                } else {
-                    ref = data.toString().match(/ref: (.*)/)[1];
-                }
-                fs.readFile(base + ref, function(err, data) {
-                    if (err) {
-                        return reject(`can't read ${base + ref}: ${err}`);
-                    }
-                    resolve(data.toString().trim());
-                });
-            });
-        });
-    }
+
     // -----------------------------------------------------------------------------------------------------
     // return path for cd
     function get_path(string) {
@@ -247,12 +170,12 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         return option === true ? false : option;
     }
     // -----------------------------------------------------------------------------------------------------
-    function getAllStats({fs, branch}) {
+    function getAllStats({fs, cwd, branch}) {
         function notGitDir(name) {
             return !name.match(/^\.git\/?/);
         }
         return gitroot(cwd).then((dir) => {
-            return Promise.all([listBranchFiles(fs, dir, branch), listDir(dir)]).then(([tracked, rest]) => {
+            return Promise.all([listBranchFiles({fs, dir, branch}), listDir(dir)]).then(([tracked, rest]) => {
                 var re = new RegExp('^' + dir);
                 rest = rest.files.map(path => path.replace(re, ''));
                 return Promise.all(union(tracked, rest).filter(notGitDir).map(filepath => {
@@ -266,13 +189,13 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     // -----------------------------------------------------------------------------------------------------
     function gitAddAll({fs, dir, branch, all}) {
         return getAllStats({fs, cwd: dir, branch}).then((files) => {
-            var skip_status = ['unmodified', 'ignored'];
+            var skip_status = ['unmodified', 'ignored', 'modified', 'deleted', 'added', 'absent'];
             if (!all) {
                 skip_status.push('*added');
             }
             return files.filter(([_, status]) => !skip_status.includes(status));
         }).then((files) => {
-            return Promise.all(files.map(([filepath]) => git.add({fs, dir, filepath})));
+            return Promise.all(files.map(([filepath, status]) => git.add({fs, dir, filepath})));
         });
     }
     const error = (e) => term.error(e.message || e).resume();
@@ -288,7 +211,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         term.error(`"${dirname}" is not a directory`).resume();
                     } else {
                         cwd = dirname == '/' ? dirname : dirname.replace(/\/$/, '');
-                        gitBranch().then(b => {
+                        gitBranch({fs, cwd}).then(b => {
                             branch = b;
                             term.resume();
                         });
@@ -418,18 +341,18 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             }
             args.forEach(arg => {
                 var path_name = path.resolve(cwd + '/' + arg);
-                fs.stat(path_name, (err, stat) => {
+                fs.stat(path_name, async (err, stat) => {
                     if (err) {
                         term.error(err);
                     } else if (stat) {
                         if (stat.isDirectory()) {
                             if (options.match(/r/)) {
-                                rmdir(path_name);
+                                await rmdir(path_name);
                             } else {
                                 term.error(`${path_name} is directory`);
                             }
                         } else if (stat.isFile()) {
-                            fs.unlink(path_name);
+                            await new Promise((resolve) => fs.unlink(path_name, resolve));
                         } else {
                             term.error(`${path_name} is invalid`);
                         }
@@ -450,11 +373,115 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             }
         },
         git: {
-            reset: function(cmd) {
+            reset: async function(cmd) {
+                cmd.args.shift();
+                term.pause();
+                const hard = cmd.args.includes('--hard');
+                try {
+                    var dir = await gitroot(cwd);
+                    const ref = cmd.args.filter(arg => arg.match(/^HEAD/))[0];
+                    if (ref) {
+                        await gitReset({fs, dir, hard, ref, branch});
+                        const commits = await git.log({fs, dir, depth: 1});
+                        const commit = commits.pop();
+                        const head = await git.resolveRef({fs, dir, ref: 'HEAD'});
+                        term.echo(`HEAD is now at ${commit.oid.substring(0, 7)} ${commit.message.trim()}`);
+                    }
+                } catch(e) {
+                    term.exception(e);
+                } finally {
+                    term.resume();
+                }
+            },
+            branch: function(cmd) {
                 term.echo('to be implemented');
             },
-            pull: function(cmd) {
-                term.echo('to be implemented');
+            pull: async function(cmd) {
+                try {
+                    term.pause();
+                    var dir = await gitroot(cwd);
+                    var remote = 'origin';
+                    var HEAD_before = await git.resolveRef({fs, dir, ref: 'HEAD'});
+                    var url = await repoURL({fs, dir});
+                    var output = [];
+                    var auth = {};
+                    if (credentials.password && credentials.username) {
+                        auth.authUsername = credentials.username;
+                        auth.authPassword = credentials.password;
+                    }
+                    function messageEmitter() {
+                        var emitter = new EventEmitter();
+                        var first;
+                        emitter.on('message', (message) => {
+                            console.log(message);
+                            if (message.match(/^Compressing/)) {
+                                if (typeof first === 'undefined') {
+                                    term.echo(message);
+                                    first = term.last_index();
+                                } else {
+                                    term.update(first, message);
+                                }
+                            } else {
+                                term.echo(message);
+                            }
+                        });
+                        return emitter;
+                    }
+                    var ref = await git.resolveRef({
+                        fs,
+                        dir,
+                        ref: 'HEAD',
+                        depth: 1
+                    })
+                    await git.pull({
+                        fs,
+                        dir,
+                        singleBranch: true,
+                        fastForwardOnly: true,
+                        ...auth,
+                        emitter: messageEmitter()
+                    });
+                    var HEAD_after = await git.resolveRef({fs, dir, ref: 'HEAD'});
+                    console.log(JSON.stringify({HEAD_after, HEAD_before}));
+                    if (HEAD_after === HEAD_before) {
+                        term.echo('Already up-to-date.');
+                    } else {
+                        output.push(`From ${url}`);
+                        output.push([
+                            '   ',
+                            HEAD_before.substring(0, 7),
+                            '..',
+                            HEAD_after.substring(0, 7),
+                            '  ',
+                            branch,
+                            '     -> ',
+                            remote,
+                            '/',
+                            branch
+                        ].join(''));
+                        output.push('Fast-froward');
+                        const diffs = await gitCommitDiff({fs, dir, oldSha: HEAD_before, newSha: HEAD_after});
+                        output.push(diffStat(Object.values(diffs).map(val => val.diff)));
+                        term.echo(output.join('\n'));
+                    }
+                } catch(e) {
+                    term.exception(e);
+                } finally {
+                    term.resume();
+                }
+                /* TODO:
+                 *
+                 * remote: Counting objects: 3, done.
+                 * remote: Compressing objects: 100% (2/2), done.
+                 * remote: Total 3 (delta 0), reused 3 (delta 0), pack-reused 0
+                 * Unpacking objects: 100% (3/3), done.
+                 * From github.com:jcubic/test
+                 *    b132560..fd4588d  master     -> origin/master
+                 * Updating b132560..fd4588d
+                 * Fast-forward
+                 *  bar | 1 +
+                 *  1 file changed, 1 insertion(+)
+                 */
             },
             checkout: function(cmd) {
                 term.echo('to be implemented');
@@ -479,7 +506,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                     });
                     try {
                         var dir = await gitroot(cwd);
-                        var url = await getURL({fs, dir});
+                        var url = await repoURL({fs, dir});
                         var branches = await git.listBranches({fs, dir, remote: 'origin'});
                         var output = [`To ${url}`];
                         if (branches.includes(branch)) {
@@ -507,65 +534,49 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                     term.error('You need to call `git login` to set username and password before push');
                 }
             },
-            commit: function(cmd) {
+            commit: async function(cmd) {
                 cmd.args.shift();
                 term.pause();
-                gitroot(cwd).then(dir => {
+                try {
+                    var dir = await gitroot(cwd);
                     var all = !!cmd.args.filter(arg => arg.match(/^-.*a/)).length;
                     if (all) {
-                        return gitAddAll({fs, dir, branch}).then(() => dir);
+                        await gitAddAll({fs, dir, branch});
                     }
-                    return dir;
-                }).then((dir) => {
                     var message = getOption(/-.*m$/, cmd.args);
                     var name = credentials.fullname || credentials.username;
                     if (!message) {
-                        term.echo('TODO: edit using vi');
+                        term.echo('TODO: edit using vi/emacs');
                     } else if (!name) {
                         term.error('You need to use git login first');
                     } else {
-                        return getAllStats({fs, branch}).then(list => {
-                            var statuses =  ['modified', 'deleted', 'added'];
-                            var modifications = list.filter(([_, status]) => statuses.includes(status));
-                            return Promise.all(modifications.map(([filepath]) => {
-                                return gitDiff({dir, filepath}).then(diff => ({filepath, diff}));
-                            }));
-                        }).then(list => {
-                            var modifications = list.reduce((acc, {diff: {hunks}}) => {
-                                hunks.forEach(function(hunk) {
-                                    hunk.lines.forEach((line) => {
-                                        if (line[0] === '-') {
-                                            acc.minus++;
-                                        } else if (line[0] === '+') {
-                                            acc.plus++;
-                                        }
-                                    });
-                                });
-                                return acc;
-                            }, {plus: 0, minus: 0});
-                            const plural = n => n == 1 ? '' : 's';
-                            return git.commit({
-                                fs,
-                                dir,
-                                author: {
-                                    email: credentials.email,
-                                    name
-                                },
-                                message
-                            }).then(sha => {
-                                var stat = [list.length + ' file' + plural(list.length)];
-                                if (modifications.plus) {
-                                    stat.push(`${modifications.plus} insertion${plural(modifications.plus)}(+)`);
-                                }
-                                if (modifications.minus) {
-                                    stat.push(`${modifications.minus} insertion${plural(modifications.minus)}(-)`);
-                                }
-                                // create mode 100644 git-webite-brand.svg
-                                term.echo(`[master ${sha.substring(0, 7)}] ${message}\n${stat.join(', ')}`);
-                            });
+                        var head = await git.resolveRef({ fs, dir, ref: 'HEAD'});
+                        var commit = await git.commit({
+                            fs,
+                            dir,
+                            author: {
+                                email: credentials.email,
+                                name
+                            },
+                            message
                         });
+                        function mod(field, label) {
+                            return Object.keys(diffs).filter(fielpath => diffs[fielpath][field]).map(fielpath => {
+                                return ` ${label} mode 100644 ${fielpath}`;
+                            }).join('\n');
+                        }
+                        var diffs = await gitCommitDiff({fs, dir, newSha: commit, oldSha: head});
+                        var stat = diffStat(Object.values(diffs).map(value => value.diff));
+                        term.echo(`[master ${commit.substring(0, 7)}] ${message}\n${stat}`);
+                        term.echo(mod('deleted', 'delete'));
+                        term.echo(mod('added', 'create'));
                     }
-                }).then(term.resume).catch(error);
+                } catch(e) {
+                    term.exception(e);
+                    throw e;
+                } finally {
+                    term.resume();
+                }
             },
             add: function(cmd) {
                 term.pause();
@@ -676,7 +687,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                  *
                  * nothing to commit, working tree clean
                  */
-                getAllStats({fs, branch}).then((files) => {
+                getAllStats({fs, cwd, branch}).then((files) => {
                     function filter(files, name) {
                         if (name instanceof Array) {
                             return files.filter(([_, status]) => name.includes(status));
@@ -758,7 +769,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 cmd.args.shift();
                 term.pause();
                 function diff({dir, filepath}) {
-                    return gitDiff({dir, filepath}).then(diff => {
+                    return gitDiff({dir, filepath, branch}).then(diff => {
                         const text = diff.hunks.map(hunk => {
                             let output = [];
                             output.push(color(
@@ -833,8 +844,9 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 }).catch(err => term.error(err.message).resume());
             },
             log: function(cmd) {
+                term.pause();
                 var depth = getOption('-n', cmd.args);
-                depth = depth ? +depth : false;
+                depth = depth ? +depth : undefined;
                 gitroot(cwd).then(dir => {
                     return Promise.all([getHEAD({dir}), getHEAD({dir, remote: true})])
                                   .then(([head, remote_head]) => ({ dir, head, remote_head }));
@@ -876,24 +888,39 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         } else {
                             term.echo(text);
                         }
+                        term.resume();
                     });
                 }).catch(error);
             },
             clone: function(cmd) {
-                var url = 'https://jcubic.pl/proxy.php?' + cmd.args[1];
                 term.pause();
+                cmd.args.shift();
+                var args = [];
+                var options = {};
+                var long;
+                var re = /^--(.*)/;
+                cmd.args.forEach(function(arg) {
+                    if (long) {
+                        options[long[1]] = arg;
+                    } else if (!String(arg).match(re)) {
+                        args.push(arg);
+                    }
+                    long = String(arg).match(re);
+                });
+                var depth = getOption(/^--depth/, cmd.args);
+                var url = 'https://jcubic.pl/proxy.php?' + args[0];
                 var re = /\/([^\/]+)(\.git)?$/;
-                var repo_dir = cmd.args.length === 3 ? cmd.args[2] : cmd.args[1].match(re)[1];
+                var repo_dir = args.length === 2 ? args[1] : args[0].match(re)[1];
                 fs.stat('/' + repo_dir, function(err, stat) {
                     if (err) {
                         fs.mkdir(repo_dir, function(err) { if (!err) { clone() }});
                     } else if (stat) {
                         if (stat.isFile()) {
-                            term.error(`"${repo_dir}" is a file`);
+                            term.error(`"${repo_dir}" is a file`).resume();
                         } else {
                             fs.readdir('/' + repo_dir, function(err, list) {
                                 if (list.length) {
-                                    term.error(`"${repo_dir}" exists and is not empty`);
+                                    term.error(`"${repo_dir}" exists and is not empty`).resume();
                                 } else {
                                     clone();
                                 }
@@ -921,7 +948,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         fs: fs,
                         dir: repo_dir,
                         url: url,
-                        depth: 1,
+                        depth: depth ? +depth : 2,
                         singleBranch: true,
                         emitter: emitter
                     }).then(() => {
@@ -964,7 +991,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         }
     };
     var ymacs_loading = true;
-    var ymacs_promise = init_ymacs();
+    var ymacs_promise = Promise.resolve();//init_ymacs();
     ymacs_promise.then(() => ymacs_loading = false);
     var term = $('.term').terminal(function(command, term) {
         var cmd = $.terminal.parse_command(command);
@@ -1008,6 +1035,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                     // complete file and directories
                     case 'vi':
                     case 'less':
+                    case 'emacs':
                         return processAssets(content => cb(prepend(trailing(content.dirs).concat(content.files))));
                     // complete directories
                     case 'ls':
@@ -1050,227 +1078,6 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     }).echo(greetings);
 });
 
-// ---------------------------------------------------------------------------------------------------------
-function time() {
-    var d = new Date();
-    return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => ('0' + n).slice(-2)).join(':');
-}
-
-// ---------------------------------------------------------------------------------------------------------
-function listDir(path) {
-    return new Promise(function(resolve, reject) {
-        fs.readdir(path, function(err, dirList) {
-            if (err) {
-                return reject(err);
-            }
-            var result = {
-                files: [],
-                dirs: []
-            };
-            var len = dirList.length;
-            if (!len) {
-                resolve(result);
-            }
-            dirList.forEach(function(filename) {
-                var file = (path === '/' ? '' : path) + '/' + filename;
-
-                fs.stat(file, function(err, stat) {
-                    if (stat) {
-                        result[stat.isFile() ? 'files' : 'dirs'].push(filename);
-                    }
-                    if (!--len) {
-                        resolve(result);
-                    }
-                });
-            });
-
-        });
-    });
-}
-
-// ---------------------------------------------------------------------------------------------------------
-// source: https://stackoverflow.com/a/3629861/387194
-function union(x, y) {
-  var obj = {};
-  for (var i = x.length-1; i >= 0; -- i)
-     obj[x[i]] = x[i];
-  for (var i = y.length-1; i >= 0; -- i)
-     obj[y[i]] = y[i];
-  var res = []
-  for (var k in obj) {
-    if (obj.hasOwnProperty(k))  // <-- optional
-      res.push(obj[k]);
-  }
-  return res;
-}
-
-// ---------------------------------------------------------------------------------------------------------
-function intersection(a, b) {
-    return a.filter(function(n) {
-        return b.includes(n);
-    });
-}
-
-// ---------------------------------------------------------------------------------------------------------
-async function rmdir(dir) {
-    return new Promise(function(resolve, reject) {
-        fs.readdir(dir, async function(err, list) {
-            if (err) {
-                return reject(err);
-            }
-            for(var i = 0; i < list.length; i++) {
-                var filename = path.join(dir, list[i]);
-                var stat = await new Promise(function(resolve, reject) {
-                    fs.stat(filename, function(err, stat) {
-                        if (err) {
-                            return reject(err);
-                        }
-                        resolve(stat);
-                    });
-                });
-                if (!filename.match(/^\.{1,2}$/)) {
-                    if(stat.isDirectory()) {
-                        await rmdir(filename);
-                    } else {
-                        await new Promise(function(resolve, reject) {
-                            fs.unlink(filename, function(err) {
-                                if (err) {
-                                    return reject(err);
-                                }
-                                resolve();
-                            });
-                        });
-                    }
-                }
-            }
-            fs.rmdir(dir, resolve);
-        });
-    });
-}
-
-// ---------------------------------------------------------------------------------------------------------
-// prism overwrite to produce terminal formatting instead of html
-(function(Token) {
-    var _ = Prism;
-    _.Token = function(type, content, alias, matchedStr, greedy) {
-        Token.apply(this, [].slice.call(arguments));
-    };
-    _.Token.stringify = function(o, language, parent) {
-        if (typeof o == 'string') {
-            return o;
-        }
-
-        if (_.util.type(o) === 'Array') {
-            return o.map(function(element) {
-                return _.Token.stringify(element, language, o);
-            }).join('');
-        }
-
-        var env = {
-            type: o.type,
-            content: _.Token.stringify(o.content, language, parent),
-            tag: 'span',
-            classes: ['token', o.type],
-            attributes: {},
-            language: language,
-            parent: parent
-        };
-
-        if (env.type == 'comment') {
-            env.attributes['spellcheck'] = 'true';
-        }
-
-        if (o.alias) {
-            var aliases = _.util.type(o.alias) === 'Array' ? o.alias : [o.alias];
-            Array.prototype.push.apply(env.classes, aliases);
-        }
-
-        _.hooks.run('wrap', env);
-
-        var attributes = Object.keys(env.attributes).map(function(name) {
-            return name + '="' + (env.attributes[name] || '').replace(/"/g, '&quot;') + '"';
-        }).join(' ');
-
-        return env.content.split(/\n/).map(function(content) {
-            return '[[b;;;' + env.classes.join(' ') + ']' + content + ']';
-        }).join('\n');
-
-    };
-})(Prism.Token);
-
-// ---------------------------------------------------------------------------------------------------------
-async function listBranchFiles(fs, dir, branchName) {
-    const repo = { fs, dir };
-    const originBaseRef = 'refs/remotes/origin/';
-    const sha = await git.resolveRef({ ...repo, ref: originBaseRef + branchName });
-    const { object: { tree } } = await git.readObject({ ...repo, oid: sha });
-    var list = [];
-    return (async function readFiles(oid, path) {
-        const { object: { entries } } = await git.readObject({ ...repo, oid});
-        var i = 0;
-        return (async function loop() {
-            var entry = entries[i++];
-            if (entry) {
-                if (entry.type == 'blob') {
-                    list.push(Object.assign({}, entry, {
-                        path: path.concat(entry.path).join('/')
-                    }));
-                } else if (entry.type == 'tree' && entry.path !== '.git') {
-                    await readFiles(entry.oid, path.concat(entry.path));
-                }
-                return loop();
-            }
-        })();
-    })(tree, []).then(() => list.map((entry) => entry.path));
-}
-
-// ---------------------------------------------------------------------------------------------------------
-async function readBranchFile({ dir, fs, filepath, branch }) {
-    const ref = 'refs/remotes/origin/' + branch;
-    const sha = await git.resolveRef({ fs, dir,  ref });
-    const { object: { tree } } = await git.readObject({ fs, dir, oid: sha });
-    return (async function loop(tree, path) {
-        if (!path.length) {
-            throw new Error(`File ${filepath} not found`);
-        }
-        var name = path.shift();
-        const { object: { entries } } = await git.readObject({ fs, dir, oid: tree });
-        const packageEntry = entries.find((entry) => entry.path === name);
-        if (!packageEntry) {
-            throw new Error(`File ${filepath} not found`);
-        } else {
-            if (packageEntry.type == 'blob') {
-                const { object: pkg } = await git.readObject({ fs, dir, oid: packageEntry.oid })
-                return pkg.toString('utf8');
-            } else if (packageEntry.type == 'tree') {
-                return loop(packageEntry.oid, path);
-            }
-        }
-    })(tree, filepath.split('/'));
-}
-
-function date(timestamp, timezoneOffset) {
-    timezoneOffset *= -1;
-    var d = new Date(timestamp * 1000);
-    var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    var months = [
-        'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
-        'September', 'October', 'November', 'December'
-    ];
-    var day = days[d.getDay()].substring(0, 3);
-    var month = months[d.getMonth()].substring(0, 3);
-    const padleft = (input, str, n) => (new Array(n + 1).join(str) + input).slice(-n);
-    const pad = (input) => padleft(input, '0', 2);
-    function offset(offset) {
-        var timezone = ('0' + (offset / 60).toString().replace('.', '') + '00').slice(-4);
-        return (offset > 1 ? '+' : '-') + timezone;
-    }
-    return [day, month, pad(d.getDate()),
-            [pad(d.getHours()), pad(d.getMinutes()), pad(d.getSeconds())].join(':'),
-            d.getFullYear(),
-            offset(timezoneOffset)
-    ].join(' ');
-}
 // ---------------------------------------------------------------------------------------------------------
 function init_ymacs() {
     var root = 'https://rawgit.com/jcubic/leash/master/lib/apps/ymacs/';
@@ -1455,5 +1262,387 @@ function init_ymacs() {
             };
         });
         return ymacs;
+    });
+}
+// ---------------------------------------------------------------------------------------------------------
+// prism overwrite to produce terminal formatting instead of html
+(function(Token) {
+    var _ = Prism;
+    _.Token = function(type, content, alias, matchedStr, greedy) {
+        Token.apply(this, [].slice.call(arguments));
+    };
+    _.Token.stringify = function(o, language, parent) {
+        if (typeof o == 'string') {
+            return o;
+        }
+
+        if (_.util.type(o) === 'Array') {
+            return o.map(function(element) {
+                return _.Token.stringify(element, language, o);
+            }).join('');
+        }
+
+        var env = {
+            type: o.type,
+            content: _.Token.stringify(o.content, language, parent),
+            tag: 'span',
+            classes: ['token', o.type],
+            attributes: {},
+            language: language,
+            parent: parent
+        };
+
+        if (env.type == 'comment') {
+            env.attributes['spellcheck'] = 'true';
+        }
+
+        if (o.alias) {
+            var aliases = _.util.type(o.alias) === 'Array' ? o.alias : [o.alias];
+            Array.prototype.push.apply(env.classes, aliases);
+        }
+
+        _.hooks.run('wrap', env);
+
+        var attributes = Object.keys(env.attributes).map(function(name) {
+            return name + '="' + (env.attributes[name] || '').replace(/"/g, '&quot;') + '"';
+        }).join(' ');
+
+        return env.content.split(/\n/).map(function(content) {
+            return '[[b;;;' + env.classes.join(' ') + ']' + content + ']';
+        }).join('\n');
+
+    };
+})(Prism.Token);
+
+// ---------------------------------------------------------------------------------------------------------
+function time() {
+    var d = new Date();
+    return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => ('0' + n).slice(-2)).join(':');
+}
+
+// ---------------------------------------------------------------------------------------------------------
+function listDir(path) {
+    return new Promise(function(resolve, reject) {
+        fs.readdir(path, function(err, dirList) {
+            if (err) {
+                return reject(err);
+            }
+            var result = {
+                files: [],
+                dirs: []
+            };
+            var len = dirList.length;
+            if (!len) {
+                resolve(result);
+            }
+            dirList.forEach(function(filename) {
+                var file = (path === '/' ? '' : path) + '/' + filename;
+
+                fs.stat(file, function(err, stat) {
+                    if (stat) {
+                        result[stat.isFile() ? 'files' : 'dirs'].push(filename);
+                    }
+                    if (!--len) {
+                        resolve(result);
+                    }
+                });
+            });
+
+        });
+    });
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// source: https://stackoverflow.com/a/3629861/387194
+function union(x, y) {
+  var obj = {};
+  for (var i = x.length-1; i >= 0; -- i)
+     obj[x[i]] = x[i];
+  for (var i = y.length-1; i >= 0; -- i)
+     obj[y[i]] = y[i];
+  var res = []
+  for (var k in obj) {
+    if (obj.hasOwnProperty(k))  // <-- optional
+      res.push(obj[k]);
+  }
+  return res;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+function intersection(a, b) {
+    return a.filter(function(n) {
+        return b.includes(n);
+    });
+}
+
+// ---------------------------------------------------------------------------------------------------------
+async function rmdir(dir) {
+    return new Promise(function(resolve, reject) {
+        fs.readdir(dir, async function(err, list) {
+            if (err) {
+                return reject(err);
+            }
+            for(var i = 0; i < list.length; i++) {
+                var filename = path.join(dir, list[i]);
+                var stat = await new Promise(function(resolve, reject) {
+                    fs.stat(filename, function(err, stat) {
+                        if (err) {
+                            return reject(err);
+                        }
+                        resolve(stat);
+                    });
+                });
+                if (!filename.match(/^\.{1,2}$/)) {
+                    if(stat.isDirectory()) {
+                        await rmdir(filename);
+                    } else {
+                        await new Promise(function(resolve, reject) {
+                            fs.unlink(filename, function(err) {
+                                if (err) {
+                                    return reject(err);
+                                }
+                                resolve();
+                            });
+                        });
+                    }
+                }
+            }
+            fs.rmdir(dir, resolve);
+        });
+    });
+}
+
+
+
+// ---------------------------------------------------------------------------------------------------------
+async function listBranchFiles({fs, dir, branch}) {
+    const repo = { fs, dir };
+    const sha = await git.resolveRef({ ...repo, ref: `refs/remotes/origin/${branch}` });
+    const { object: { tree } } = await git.readObject({ ...repo, oid: sha });
+    var list = [];
+    return traverseCommit({fs, dir, sha, callback: ({filepath}) => list.push(filepath)}).then(() => list);
+}
+// ---------------------------------------------------------------------------------------------------------
+async function traverseCommit({fs, dir, sha, callback = $.noop}) {
+    const repo = {fs, dir};
+    const { object: { tree } } = await git.readObject({ ...repo, oid: sha });
+    return await (async function readFiles(oid, path) {
+        const { object: { entries } } = await git.readObject({ ...repo, oid});
+        var i = 0;
+        return (async function loop() {
+            var entry = entries[i++];
+            if (entry) {
+                if (entry.type == 'blob') {
+                    var filepath = path.concat(entry.path).join('/');
+                    await callback({entry, filepath, oid: entry.oid});
+                } else if (entry.type == 'tree' && entry.path !== '.git') {
+                    await readFiles(entry.oid, path.concat(entry.path));
+                }
+                return loop();
+            }
+        })();
+    })(tree, []);
+}
+
+// ---------------------------------------------------------------------------------------------------------
+async function gitCommitDiff({fs, dir, newSha, oldSha}) {
+    var result = {};
+    function reader(name) {
+        return async ({filepath, oid}) => {
+            try {
+                const { object: pkg } = await git.readObject({ fs, dir, oid });
+                result[filepath] = result[filepath] || {};
+                result[filepath][name] = pkg.toString('utf8');
+            } catch(e) {
+                // ignore missing file/object
+            }
+        };
+    }
+    await traverseCommit({fs, dir, sha: oldSha, callback: reader('oldFile')});
+    await traverseCommit({fs, dir, sha: newSha, callback: reader('newFile')});
+    Object.keys(result).forEach(key => {
+        var diff = JsDiff.structuredPatch(key, key, result[key].oldFile || '', result[key].newFile || '');
+        if (typeof result[key].oldFile === 'undefined') {
+            result[key].added = true;
+        } else if (typeof result[key].newFile === 'undefined') {
+            result[key].deleted = true;
+        } else if (!diff.hunks.length) {
+            delete result[key];
+        }
+        if (diff.hunks.length) {
+            result[key].diff = diff;
+        }
+    });
+    return result;
+}
+
+// ---------------------------------------------------------------------------------------------------------
+function diffStat(diffs) {
+    var modifications = diffs.reduce((acc, {hunks}) => {
+        hunks.forEach(function(hunk) {
+            hunk.lines.forEach((line) => {
+                if (line[0] === '-') {
+                    acc.minus++;
+                } else if (line[0] === '+') {
+                    acc.plus++;
+                }
+            });
+        });
+        return acc;
+    }, {plus: 0, minus: 0});
+    const plural = n => n == 1 ? '' : 's';
+    var stat = [' ' + diffs.length + ' file' + plural(diffs.length)];
+    if (modifications.plus) {
+        stat.push(`${modifications.plus} insertion${plural(modifications.plus)}(+)`);
+    }
+    if (modifications.minus) {
+        stat.push(`${modifications.minus} insertion${plural(modifications.minus)}(-)`);
+    }
+    return stat.join(', ');
+}
+
+// ---------------------------------------------------------------------------------------------------------
+async function readBranchFile({ dir, fs, filepath, branch }) {
+    const ref = 'refs/remotes/origin/' + branch;
+    const sha = await git.resolveRef({ fs, dir,  ref });
+    const { object: { tree } } = await git.readObject({ fs, dir, oid: sha });
+    return (async function loop(tree, path) {
+        if (!path.length) {
+            throw new Error(`File ${filepath} not found`);
+        }
+        var name = path.shift();
+        const { object: { entries } } = await git.readObject({ fs, dir, oid: tree });
+        const packageEntry = entries.find((entry) => entry.path === name);
+        if (!packageEntry) {
+            throw new Error(`File ${filepath} not found`);
+        } else {
+            if (packageEntry.type == 'blob') {
+                const { object: pkg } = await git.readObject({ fs, dir, oid: packageEntry.oid })
+                return pkg.toString('utf8');
+            } else if (packageEntry.type == 'tree') {
+                return loop(packageEntry.oid, path);
+            }
+        }
+    })(tree, filepath.split('/'));
+}
+
+// ---------------------------------------------------------------------------------------------------------
+function date(timestamp, timezoneOffset) {
+    timezoneOffset *= -1;
+    var d = new Date(timestamp * 1000);
+    var days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    var months = [
+        'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+        'September', 'October', 'November', 'December'
+    ];
+    var day = days[d.getDay()].substring(0, 3);
+    var month = months[d.getMonth()].substring(0, 3);
+    const padleft = (input, str, n) => (new Array(n + 1).join(str) + input).slice(-n);
+    const pad = (input) => padleft(input, '0', 2);
+    function offset(offset) {
+        var timezone = ('0' + (offset / 60).toString().replace('.', '') + '00').slice(-4);
+        return (offset > 1 ? '+' : '-') + timezone;
+    }
+    return [day, month, pad(d.getDate()),
+            [pad(d.getHours()), pad(d.getMinutes()), pad(d.getSeconds())].join(':'),
+            d.getFullYear(),
+            offset(timezoneOffset)
+    ].join(' ');
+}
+
+// ---------------------------------------------------------------------------------------------------------
+function gitroot(cwd) {
+    return git.findRoot({fs, filepath: cwd});
+}
+// ---------------------------------------------------------------------------------------------------------
+async function gitBranch({fs, cwd}) {
+    try {
+        var dir = await gitroot(cwd);
+        return git.currentBranch({fs, dir});
+    } catch(e) {
+    }
+}
+// ---------------------------------------------------------------------------------------------------------
+function gitDiff({dir, filepath, branch}) {
+    var fname = dir + '/' + filepath;
+    return new Promise(function(resolve, reject) {
+        fs.readFile(fname, async function(err, newFile) {
+            if (!err) {
+                newFile = newFile.toString();
+            }
+            readBranchFile({fs, dir, branch, filepath}).then(oldFile => {
+                const diff = JsDiff.structuredPatch(filepath, filepath, oldFile || '', newFile || '');
+                resolve(diff);
+            }).catch(err => reject(err));
+        });
+    });
+}
+// ---------------------------------------------------------------------------------------------------------
+async function gitReset({fs, dir, ref, branch, hard = false}) {
+    var re = /^HEAD~([0-9]+)$/
+    var m = ref.match(re);
+    if (m) {
+        var count = +m[1];
+        var commits = await git.log({fs, dir, depth: count + 1});
+        return new Promise((resolve, reject) => {
+            if (commits.length < count + 1) {
+                return reject('Not enough commits');
+            }
+            var commit = commits.pop().oid;
+            fs.writeFile(`${dir}/.git/refs/heads/${branch}`, commit, (err) => {
+                if (err) {
+                    return reject(err);
+                }
+                if (!hard) {
+                    resolve();
+                } else {
+                    // clear the index (if any)
+                    fs.unlink(`${dir}/.git/index`, (err) => {
+                        if (err) {
+                            return reject(err);
+                        }
+                        // checkout the branch into the working tree
+                        git.checkout({ dir, fs, ref: branch }).then(resolve);
+                    });
+                }
+            });
+        });
+    }
+    return Promise.reject(`Wrong ref ${ref}`);
+}
+// ---------------------------------------------------------------------------------------------------------
+function gitURL({fs, dir, gitdir = path.join(dir, '.git'), remote = 'origin'}) {
+    return git.config({fs, gitdir, path: `remote.${remote}.url`});
+}
+// ---------------------------------------------------------------------------------------------------------
+async function repoURL({fs, dir, gitdir = path.join(dir, '.git'), remote = 'origin'}) {
+    var url = await gitURL({fs, dir, gitdir, remote});
+    return url.replace(/^https:\/\/jcubic.pl\/proxy.php\?/, '');
+}
+// ---------------------------------------------------------------------------------------------------------
+function getHEAD({dir, gitdir, remote = false}) {
+    if (!remote) {
+        return git.resolveRef({fs, dir: 'test', ref: 'HEAD'});
+    } else {
+        //return git.resolveRef({fs, dir: 'test', ref: 'refs/remotes/origin/HEAD'});
+    }
+    return new Promise((resolve, reject) => {
+        var base = `${dir}/${gitdir || '.git'}/`;
+        var ref_file = remote ? `${base}refs/remotes/origin/HEAD` : `${base}HEAD`;
+        fs.readFile(ref_file, function(err, data) {
+            var ref;
+            if (err) {
+                //return reject(`can't read ${ref_file}: ${err}` );
+                ref = 'refs/remotes/origin/master';
+            } else {
+                ref = data.toString().match(/ref: (.*)/)[1];
+            }
+            fs.readFile(base + ref, function(err, data) {
+                if (err) {
+                    return reject(`can't read ${base + ref}: ${err}`);
+                }
+                resolve(data.toString().trim());
+            });
+        });
     });
 }
