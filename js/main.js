@@ -120,18 +120,15 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 if (err) {
                     term.error(err.message);
                 } else {
-                    var text;
+                    var text = data.toString('utf8').replace(/\n$/, '');
                     var m = filename.match(/\.([^.]+)$/);
                     if (m) {
                         var language = m[1];
                     }
                     if (!raw && language && Prism.languages[language]) {
-                        var file = data.toString();
                         var grammar = Prism.languages[language];
                         var tokens = Prism.tokenize(file, grammar);
                         text = Prism.Token.stringify(tokens, language);
-                    } else {
-                        text = data.toString();
                     }
                     cb(text);
                 }
@@ -226,6 +223,9 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             ymacs_promise.then(ymacs => {
                 term.resume();
                 var fname = cmd.args[0];
+                if (typeof fname !== 'string') {
+                    fname = String(fname);
+                }
                 function init() {
                     setTimeout(function() {
                         term.focus(false);
@@ -254,6 +254,9 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             var textarea = $('.vi');
             var editor;
             var fname = cmd.args[0];
+            if (typeof fname !== 'string') {
+                fname = String(fname);
+            }
             term.focus(false);
             if (fname) {
                 var path;
@@ -432,7 +435,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         dir,
                         ref: 'HEAD',
                         depth: 1
-                    })
+                    });
                     await git.pull({
                         fs,
                         dir,
@@ -441,6 +444,17 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         ...auth,
                         emitter: messageEmitter()
                     });
+                    // isomorphic git patch
+                    const head = await git.resolveRef({
+                        fs,
+                        dir,
+                        ref: 'HEAD',
+                        depth: 1
+                    });
+                    console.log({head, ref});
+                    if (head != ref) {
+                        await new Promise((resolve) => fs.writeFile(`${dir}/.git/HEAD`, ref, resolve));
+                    }
                     var HEAD_after = await git.resolveRef({fs, dir, ref: 'HEAD'});
                     console.log(JSON.stringify({HEAD_after, HEAD_before}));
                     if (HEAD_after === HEAD_before) {
@@ -538,18 +552,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 cmd.args.shift();
                 term.pause();
                 try {
-                    var dir = await gitroot(cwd);
-                    var all = !!cmd.args.filter(arg => arg.match(/^-.*a/)).length;
-                    if (all) {
-                        await gitAddAll({fs, dir, branch});
-                    }
-                    var message = getOption(/-.*m$/, cmd.args);
-                    var name = credentials.fullname || credentials.username;
-                    if (!message) {
-                        term.echo('TODO: edit using vi/emacs');
-                    } else if (!name) {
-                        term.error('You need to use git login first');
-                    } else {
+                    async function commit() {
                         var head = await git.resolveRef({ fs, dir, ref: 'HEAD'});
                         var commit = await git.commit({
                             fs,
@@ -570,6 +573,77 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         term.echo(`[master ${commit.substring(0, 7)}] ${message}\n${stat}`);
                         term.echo(mod('deleted', 'delete'));
                         term.echo(mod('added', 'create'));
+                    }
+                    var dir = await gitroot(cwd);
+                    var all = !!cmd.args.filter(arg => arg.match(/^-.*a/)).length;
+                    if (all) {
+                        await gitAddAll({fs, dir, branch});
+                    }
+                    var message = getOption(/-.*m$/, cmd.args);
+                    var name = credentials.fullname || credentials.username;
+                    if (!name) {
+                        term.error('You need to use git login first');
+                    } else if (!message) {
+                        var textarea = $('.vi');
+                        var file = [
+                            '',
+                            '# Please enter the commit message for your changes. Lines starting',
+                            '# with \'#\' will be ignored, and an empty message aborts the commit.',
+                            '#'
+                        ];
+                        var head = await getHEAD({dir});
+                        var remote = await getHEAD({dir, remote: true});
+                        if (head === remote) {
+                            file = file.concat([
+                                `# On branch ${branch}`,
+                                `# Your branch is up-to-date with 'origin/${branch}'.`,
+                                '#'
+                            ]);
+                        }
+                        var files = await getAllStats({fs, cwd, branch});
+                        var staged = files.filter(([_, stat]) => ['modified', 'deleted', 'added'].includes(stat));
+                        var not_staged = files.filter(([_, stat]) => ['*modified', '*deleted'].includes(stat));
+                        var new_files = files.filter(([_, stat]) => stat === '*added');
+                        console.log({files, staged, not_staged, new_files});
+                        var mapping = {
+                            'added': 'new file'
+                        }
+                        const format = ([filepath, status]) => {
+                            status = status.replace(/^\*/, '');
+                            return '#   ' + padright(`${mapping[status] || status}:`, 12) + filepath;
+                        };
+                        const append = (array, message) => file = file.concat([message], array.map(format), ['#']);
+                        if (staged.length) {
+                            append(staged, '# Changes to be committed:');
+                        }
+                        if (not_staged.length) {
+                            append(not_staged, '# Changes not staged for commit:');
+                        }
+                        if (new_files.length) {
+                            file = file.concat([
+                                '# Untracked files:'
+                            ], new_files.map(([file]) => `#   ${file}`), ['#']);
+                        }
+                        textarea.val(file.join('\n').replace(/</g, '&lt;').replace(/&/g, '&amp;'));
+                        term.focus(false);
+                        var editor = window.editor = vi(textarea[0], {
+                            color: '#ccc',
+                            backgroundColor: '#000',
+                            onSave: function() {
+                                file = textarea.val().replace(/&amp;/g, '&').replace(/&lt;/g, '<').split('\n');
+                            },
+                            onExit: async function() {
+                                message = file.filter(line => !line.startsWith('#')).join('\n').trim();
+                                if (!message) {
+                                    term.echo('Aborting commit due to empty commit message.');
+                                } else {
+                                    await commit();
+                                }
+                                term.focus();
+                            }
+                        });
+                    } else {
+                        await commit();
                     }
                 } catch(e) {
                     term.exception(e);
@@ -852,6 +926,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                                   .then(([head, remote_head]) => ({ dir, head, remote_head }));
                 }).then(({dir, head, remote_head}) => {
                     function format(commit) {
+                        console.log({head, remote_head, commit: commit.oid});
                         var output = [];
                         var suffix = '';
                         if (head === remote_head && head === commit.oid) {
@@ -882,7 +957,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         return output.join('\n');
                     }
                     return git.log({fs, dir, depth, ref: branch}).then(commits => {
-                        var text = commits.map(format).join('\n\n');
+                        var text = commits.filter(commit => !commit.error).map(format).join('\n\n');
                         if (text.length - 1 > term.rows()) {
                             term.less(text);
                         } else {
@@ -991,7 +1066,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         }
     };
     var ymacs_loading = true;
-    var ymacs_promise = Promise.resolve();//init_ymacs();
+    var ymacs_promise = init_ymacs();
     ymacs_promise.then(() => ymacs_loading = false);
     var term = $('.term').terminal(function(command, term) {
         var cmd = $.terminal.parse_command(command);
@@ -1033,6 +1108,8 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             if (cmd.name !== string) {
                 switch (cmd.name) {
                     // complete file and directories
+                    case 'rm':
+                    case 'cat':
                     case 'vi':
                     case 'less':
                     case 'emacs':
@@ -1525,7 +1602,8 @@ async function readBranchFile({ dir, fs, filepath, branch }) {
         }
     })(tree, filepath.split('/'));
 }
-
+const padleft = (input, n, str) => (new Array(n + 1).join(str || ' ') + input).slice(-n);
+const padright = (input, n, str) => (input + new Array(n + 1).join(str || ' ')).substring(0, n);
 // ---------------------------------------------------------------------------------------------------------
 function date(timestamp, timezoneOffset) {
     timezoneOffset *= -1;
@@ -1537,8 +1615,7 @@ function date(timestamp, timezoneOffset) {
     ];
     var day = days[d.getDay()].substring(0, 3);
     var month = months[d.getMonth()].substring(0, 3);
-    const padleft = (input, str, n) => (new Array(n + 1).join(str) + input).slice(-n);
-    const pad = (input) => padleft(input, '0', 2);
+    const pad = (input) => padleft(input, 2, '0');
     function offset(offset) {
         var timezone = ('0' + (offset / 60).toString().replace('.', '') + '00').slice(-4);
         return (offset > 1 ? '+' : '-') + timezone;
@@ -1589,7 +1666,7 @@ async function gitReset({fs, dir, ref, branch, hard = false}) {
                 return reject('Not enough commits');
             }
             var commit = commits.pop().oid;
-            fs.writeFile(`${dir}/.git/refs/heads/${branch}`, commit, (err) => {
+            fs.writeFile(`${dir}/.git/refs/heads/${branch}`, commit + '\n', (err) => {
                 if (err) {
                     return reject(err);
                 }
@@ -1622,7 +1699,7 @@ async function repoURL({fs, dir, gitdir = path.join(dir, '.git'), remote = 'orig
 // ---------------------------------------------------------------------------------------------------------
 function getHEAD({dir, gitdir, remote = false}) {
     if (!remote) {
-        return git.resolveRef({fs, dir: 'test', ref: 'HEAD'});
+        return git.resolveRef({fs, dir, ref: 'HEAD'});
     } else {
         //return git.resolveRef({fs, dir: 'test', ref: 'refs/remotes/origin/HEAD'});
     }

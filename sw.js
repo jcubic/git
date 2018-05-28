@@ -96,6 +96,9 @@ self.addEventListener('fetch', function (event) {
                 }
             });
         } else {
+            if (event.request.cache === 'only-if-cached' && event.request.mode !== 'same-origin') {
+                return;
+            }
             //request = credentials: 'include'
             fetch(event.request).then(resolve).catch(reject);
         }
