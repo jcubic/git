@@ -1068,6 +1068,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     var ymacs_loading = true;
     var ymacs_promise = init_ymacs();
     ymacs_promise.then(() => ymacs_loading = false);
+    var scrollTop;
     var term = $('.term').terminal(function(command, term) {
         var cmd = $.terminal.parse_command(command);
         if (commands[cmd.name]) {
@@ -1088,6 +1089,16 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         }
     }, {
         execHash: true,
+        // fix wierd jumping on windows/chrome
+        keydown: function() {
+            scrollTop = term.scrollTop();
+            term.prop({scrollTop: self.prop('scrollHeight')});
+        },
+        keyup: function() {
+            if (typoef scrollTop !== 'undefined') {
+                setTimeout(() => term.scrollTop(scrollTop), 0);
+            }
+        },
         completion: function(string, cb) {
             var cmd = $.terminal.parse_command(this.before_cursor());
             function processAssets(callback) {
