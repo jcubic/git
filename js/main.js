@@ -197,6 +197,27 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     }
     const error = (e) => term.error(e.message || e).resume();
     var commands = {
+        mkdir: function(cmd) {
+            if (cmd.args.length > 0) {
+                var options = [];
+                var args = [];
+                cmd.args.forEach((arg) => {
+                    var m = arg.match(/^-([^\-].*)/);
+                    if (m) {
+                        options = options.concat(m[1].split(''));
+                    } else {
+                        args.push(arg);
+                    }
+                });
+                if (args.length) {
+                    term.pause();
+                    Promise.all(args.map(dir => {
+                        dir = dir[0] === '/' ? dir : path.join(cwd, dir);
+                        return mkdir(dir, options.includes('p'))
+                    })).then(term.resume).catch(error);
+                }
+            }
+        },
         cd: function(cmd) {
             if (cmd.args.length === 1) {
                 var dirname = path.resolve(cwd + '/' + cmd.args[0]);
@@ -984,16 +1005,16 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 });
                 var depth = getOption(/^--depth/, cmd.args);
                 var url = 'https://jcubic.pl/proxy.php?' + args[0];
-                var re = /\/([^\/]+)(\.git)?$/;
-                var repo_dir = args.length === 2 ? args[1] : args[0].match(re)[1];
-                fs.stat('/' + repo_dir, function(err, stat) {
+                re = /\/([^\/]+)(\.git)?$/;
+                var repo_dir = path.join(cwd, (args.length === 2 ? args[1] : args[0].match(re)[1]));
+                fs.stat(repo_dir, function(err, stat) {
                     if (err) {
-                        fs.mkdir(repo_dir, function(err) { if (!err) { clone() }});
+                        mkdir(repo_dir, true).then(clone).catch(error);
                     } else if (stat) {
                         if (stat.isFile()) {
                             term.error(`"${repo_dir}" is a file`).resume();
                         } else {
-                            fs.readdir('/' + repo_dir, function(err, list) {
+                            fs.readdir(repo_dir, function(err, list) {
                                 if (list.length) {
                                     term.error(`"${repo_dir}" exists and is not empty`).resume();
                                 } else {
@@ -1724,5 +1745,57 @@ function getHEAD({dir, gitdir, remote = false}) {
                 resolve(data.toString().trim());
             });
         });
+    });
+}
+function mkdir(dir, parent = false) {
+    return new Promise(function(resolve, reject) {
+        if (parent) {
+            dir = dir.split('/');
+            if (!dir.length) {
+                return reject('Invalid argument');
+            }
+            var full_path = '/';
+            (function loop() {
+                if (!dir.length) {
+                    return resolve();
+                }
+                full_path = path.join(full_path, dir.shift());
+                fs.stat(full_path, function(err, stat) {
+                    if (err) {
+                        fs.mkdir(full_path, function(err) {
+                            if (err) {
+                                reject(err);
+                            } else {
+                                loop();
+                            }
+                        });
+                    } else if (stat) {
+                        if (stat.isDirectory()) {
+                            loop();
+                        } else if (stat.isFile()) {
+                            reject(`${full_path} is a file`);
+                        }
+                    }
+                });
+            })();
+        } else {
+            fs.stat(dir, function(err, stat) {
+                if (err) {
+                    fs.mkdir(dir, function(err) {
+                        if (err) {
+                            reject(err);
+                        } else {
+                            resolve();
+                        }
+                    });
+                } else if (stat) {
+                    if (stat.isDirectory()) {
+                        reject('Directory already exists');
+                    } else if (stat.isFile()) {
+                        reject(`${dir} is a File`);
+                    }
+                }
+            });
+        }
     });
 }
