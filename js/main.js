@@ -1092,10 +1092,10 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         // fix wierd jumping on windows/chrome
         keydown: function() {
             scrollTop = term.scrollTop();
-            term.prop({scrollTop: self.prop('scrollHeight')});
+            term.prop({scrollTop: term.prop('scrollHeight')});
         },
         keyup: function() {
-            if (typoef scrollTop !== 'undefined') {
+            if (typeof scrollTop !== 'undefined') {
                 setTimeout(() => term.scrollTop(scrollTop), 0);
             }
         },
