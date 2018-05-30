@@ -1011,7 +1011,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                             term.echo(message);
                             index = term.last_index();
                         } else {
-                            term.update(index, message)
+                            term.update(index, message);
                         }
                     } else {
                         term.echo(message);
@@ -1090,15 +1090,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     }, {
         execHash: true,
         // fix wierd jumping on windows/chrome
-        keydown: function() {
-            scrollTop = term.scrollTop();
-            term.prop({scrollTop: term.prop('scrollHeight')});
-        },
-        keyup: function() {
-            if (typeof scrollTop !== 'undefined') {
-                setTimeout(() => term.scrollTop(scrollTop), 0);
-            }
-        },
+        scrollObject: 'body',
         completion: function(string, cb) {
             var cmd = $.terminal.parse_command(this.before_cursor());
             function processAssets(callback) {
