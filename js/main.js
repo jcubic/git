@@ -58,6 +58,12 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     });
     var branch;
     // -----------------------------------------------------------------------------------------------------
+    // :: resolve path
+    // -----------------------------------------------------------------------------------------------------
+    function resolve(p) {
+        return path.resolve(p[0] == '/' ? p : path.join(cwd, p));
+    }
+    // -----------------------------------------------------------------------------------------------------
     function color(name, string) {
         var colors = {
             blue:   '#55f',
@@ -386,6 +392,11 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                     }
                 });
             });
+        },
+        view: function(cmd) {
+            if (cmd.args.length === 1) {
+                view(cmd.args[0]);
+            }
         },
         record: function(cmd) {
             if (cmd.args[0] == 'start') {
@@ -1067,6 +1078,8 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 '\t[[!;;;;https://github.com/PrismJS/prism]PrimsJS] by Lea Verou',
                 '\t[[!;;;;https://github.com/kpdecker/jsdiff]jsdiff] by Kevin Decker',
                 '\t[[!;;;;https://github.com/softius/php-cross-domain-proxy]AJAX Cross Domain (PHP) Proxy] by Iacovos Constantinou',
+                '\n[[!;;;;https://github.com/jcubic/Clarity]Clarity icons] by Jakub Jankiewicz',
+                '\n[[!;;;;https://github.com/jcubic/jquery.splitter]jQuery Splitter] by Jakub Jankiewicz',
                 '',
                 'Contributors:'
             ].concat(contributors.map(user => '\t[[!;;;;' + user.url + ']' + (user.fullname || user.name) + ']'));
@@ -1090,8 +1103,66 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     var ymacs_promise = init_ymacs();
     ymacs_promise.then(() => ymacs_loading = false);
     var scrollTop;
+    var view = (function() {
+        var base = location.pathname.replace(/\/[^\/]+$/, '/');
+        var viewer = $('.viewer');
+        var iframe = viewer.find('iframe');
+        var splitter;
+        viewer.on('click', '.close', function() {
+            if (splitter) {
+                splitter.destroy();
+                splitter = null;
+                viewer.hide();
+                term.css('width', '');
+            }
+        });
+        var adress = viewer.find('input').on('keydown', function(e) {
+            if (e.key.toLowerCase() == 'enter') {
+                view(adress.val());
+            }
+        });
+        viewer.on('click', '.refresh', function() {
+            view(adress.val());
+        });
+        var paths = [];
+        var index = 0;
+        var next = viewer.find('.next').on('click', function() {
+            if (!next.is('.disabled')) {
+                view(paths[++index], true);
+            }
+        });
+        var prev = viewer.find('.prev').on('click', function() {
+            if (!prev.is('.disabled')) {
+                view(paths[--index], true);
+            }
+        });
+
+        function view(path, soft) {
+            if (!splitter) {
+                splitter = $('.split').split({
+                    orientation: 'vertical',
+                    limit: 400
+                });
+            }
+            iframe.off('load').on('load', function() {
+                var path = iframe[0].contentWindow.location.href.replace(/.*__browserfs__/, '');
+                adress.val(path);
+                // this need to be added each time because we need to access soft prop
+                if (!soft) {
+                    paths = paths.slice(0, index + 1);
+                    paths.push(path);
+                    index = paths.length - 1;
+                }
+                soft = false;
+                next.toggleClass('disabled', index === paths.length - 1);
+                prev.toggleClass('disabled', index === 0);
+            }).attr('src', base + '__browserfs__' + resolve(path));
+        }
+
+        return view;
+    })();
     var term = $('.term').terminal(function(command, term) {
-        var cmd = $.terminal.parse_command(command);
+        var cmd = $.terminal.split_command(command);
         if (commands[cmd.name]) {
             var action = commands[cmd.name];
             var args = cmd.args.slice();
