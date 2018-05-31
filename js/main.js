@@ -31,6 +31,8 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     window.path = BrowserFS.BFSRequire('path');
     if ('serviceWorker' in navigator) {
         var scope = location.pathname.replace(/\/[^\/]+$/, '/');
+        // loading this repo from browerFS will not work because serviceWorker can't be loaded from
+        // serivice worker.
         if (!scope.match(/__browserfs__/)) {
             navigator.serviceWorker.register('sw.js', {scope})
                      .then(function(reg) {
@@ -82,10 +84,20 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         }
     }
     // -----------------------------------------------------------------------------------------------------
-    function messageEmitter() {
+    function messageEmitter(re) {
         var emitter = new EventEmitter();
+        var first;
         emitter.on('message', (message) => {
-            term.echo(message);
+            if (re && message.match(re)) {
+                if (typeof first === 'undefined') {
+                    term.echo(message);
+                    first = term.last_index();
+                } else {
+                    term.update(first, message);
+                }
+            } else {
+                term.echo(message);
+            }
         });
         return emitter;
     }
@@ -444,24 +456,6 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         auth.authUsername = credentials.username;
                         auth.authPassword = credentials.password;
                     }
-                    function messageEmitter() {
-                        var emitter = new EventEmitter();
-                        var first;
-                        emitter.on('message', (message) => {
-                            console.log(message);
-                            if (message.match(/^Compressing/)) {
-                                if (typeof first === 'undefined') {
-                                    term.echo(message);
-                                    first = term.last_index();
-                                } else {
-                                    term.update(first, message);
-                                }
-                            } else {
-                                term.echo(message);
-                            }
-                        });
-                        return emitter;
-                    }
                     var ref = await git.resolveRef({
                         fs,
                         dir,
@@ -474,7 +468,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                         singleBranch: true,
                         fastForwardOnly: true,
                         ...auth,
-                        emitter: messageEmitter()
+                        emitter: messageEmitter(/^Compressing/)
                     });
                     // isomorphic git patch
                     const head = await git.resolveRef({
@@ -529,8 +523,48 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                  *  1 file changed, 1 insertion(+)
                  */
             },
-            checkout: function(cmd) {
-                term.echo('to be implemented');
+            fetch: async function(cmd) {
+                cmd.args.shift();
+                try {
+                    if (cmd.args.length) {
+                        term.pause();
+                        var dir = await gitroot(cwd);
+                        var emitter = messageEmitter();
+                        await git.fetch({
+                            fs,
+                            dir,
+                            singleBranch: true,
+                            ref: cmd.args[0],
+                            depth: 1,
+                            emitter
+                        });
+                    }
+                } catch(e) {
+                    term.error(e.message || e);
+                } finally {
+                    term.resume();
+                }
+            },
+            checkout: async function(cmd) {
+                cmd.args.shift();
+                try {
+                    if (cmd.args.length) {
+                        term.pause();
+                        var dir = await gitroot(cwd);
+                        await git.checkout({fs, dir, ref: cmd.args[0]});
+                        branch = await gitBranch({fs, cwd});
+                    } else {
+                        term.echo('to be implemented');
+                        /*
+                         * M       js/main.js
+                         * Your branch is up-to-date with 'origin/gh-pages'.
+                         */
+                    }
+                } catch (e) {
+                    term.error(e.message || e);
+                } finally {
+                    term.resume();
+                }
                 /* TODO:
                  *
                  * Switched to branch 'gh-pages'
@@ -1178,6 +1212,8 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             } else {
                 term.error('Unknown command');
             }
+        } else {
+            term.error('Unknown command');
         }
     }, {
         execHash: true,
