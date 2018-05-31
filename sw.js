@@ -10,18 +10,23 @@
  * Released under the MIT license
  *
  */
-self.addEventListener('install', function(evt) {
-    self.skipWaiting();
-    self.importScripts('https://cdn.jsdelivr.net/npm/browserfs');
-    BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
-        if (err) {
-            console.log(err);
-        } else {
-            self.fs = BrowserFS.BFSRequire('fs');
-            self.path = BrowserFS.BFSRequire('path');
-        }
-    });
-});
+
+function loadDependecies() {
+    if (!self.fs) {
+        self.importScripts('https://cdn.jsdelivr.net/npm/browserfs');
+        BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
+            if (err) {
+                console.log(err);
+            } else {
+                self.fs = BrowserFS.BFSRequire('fs');
+                self.path = BrowserFS.BFSRequire('path');
+            }
+        });
+    }
+}
+self.addEventListener('install', loadDependecies);
+
+self.addEventListener('activate', loadDependecies);
 
 self.addEventListener('fetch', function (event) {
     event.respondWith(new Promise(function(resolve, reject) {
