@@ -10,7 +10,6 @@
  * Released under the MIT license
  *
  */
-
 self.addEventListener('install', function(evt) {
     self.skipWaiting();
     self.importScripts('https://cdn.jsdelivr.net/npm/browserfs');
@@ -40,12 +39,7 @@ self.addEventListener('fetch', function (event) {
         function redirect_dir() {
             return resolve(Response.redirect(url + '/', 301));
         }
-        if (m && self.fs) {
-            var path = m[1];
-            if (path === '') {
-                return redirect_dir();
-            }
-            console.log('serving ' + path + ' from browserfs');
+        function serve() {
             fs.stat(path, function(err, stat) {
                 if (err) {
                     return resolve(textResponse(error404(path)));
@@ -95,6 +89,24 @@ self.addEventListener('fetch', function (event) {
                     });
                 }
             });
+        }
+        if (m) {
+            var path = m[1];
+            if (path === '') {
+                return redirect_dir();
+            }
+            console.log('serving ' + path + ' from browserfs');
+            if (!self.fs) {
+                (function loop() {
+                    if (!self.fs) {
+                        setTimeout(loop, 400);
+                    } else {
+                        serve();
+                    }
+                })();
+            } else {
+                serve();
+            }
         } else {
             if (event.request.cache === 'only-if-cached' && event.request.mode !== 'same-origin') {
                 return;
