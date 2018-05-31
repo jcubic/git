@@ -12,6 +12,7 @@
  */
 
 function loadDependecies() {
+    self.skipWaiting();
     if (!self.fs) {
         self.importScripts('https://cdn.jsdelivr.net/npm/browserfs');
         BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
