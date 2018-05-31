@@ -1,0 +1,114 @@
+/**@license
+ *   ___ ___ _____  __      __   _      _____              _           _
+ *  / __|_ _|_   _| \ \    / /__| |__  |_   _|__ _ _ _ __ (_)_ _  __ _| |
+ * | (_ || |  | |    \ \/\/ / -_) '_ \   | |/ -_) '_| '  \| | ' \/ _` | |
+ *  \___|___| |_|     \_/\_/\___|_.__/   |_|\___|_| |_|_|_|_|_||_\__,_|_|
+ *
+ * Copyright (c) 2018 Jakub Jankiewicz <http://jcubic.pl/me>
+ * Released under the MIT license
+ *
+ */
+.DlLayout {
+    position: absolute;
+}
+.terminal {
+    --size: 1.2;
+    min-height: 100vh;
+}
+.Ymacs-frame-content {
+    display: inline-block;
+    min-width: 100%;
+}
+.Ymacs-Theme-dark.Ymacs-Theme-y .Ymacs_Frame .builtin {
+    color: rgb(176, 196, 222);
+}
+/* bar cursor for ymacs */
+body .Ymacs-Theme-dark .Ymacs_Frame-focus .Ymacs-caret {
+    background: transparent !important;
+    color: inherit !important;
+}
+.Ymacs-caret {
+    position: relative;
+}
+.Ymacs-caret:before {
+    content: " ";
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    border-left: 1px solid white;
+    bottom: 0;
+}
+.DlDesktop { display: none; }
+.viewer {
+    display: none;
+}
+.split {
+    height: 100vh;
+}
+.splitter_panel .viewer {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.viewer header {
+    height: 32px;
+    padding: 4px;
+    display: flex;
+    width: 100%;
+    background: #cecece;
+    border-bottom: 1px solid #818181;
+}
+.viewer header, .viewer input, .viewer .close {
+    box-sizing: border-box;
+}
+.viewer input {
+    flex-grow: 1;
+    border-radius: 2px;
+    border: 1px solid #818181;
+    padding-left: 5px;
+}
+.viewer .close {
+    width: 24px;
+    height: 24px;
+    text-align: center;
+    float: right;
+    z-index: 1000;
+    position: relative;
+    cursor: pointer;
+    padding-top: 2px;
+}
+.viewer iframe {
+    border: none;
+    width: 100%;
+    flex-grow: 1;
+}
+.viewer .controls ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+}
+.viewer .controls {
+    width: calc(3 * 24px);
+    padding-right: 5px;
+}
+.viewer .controls li a {
+    width: 24px;
+    height: 24px;
+    text-indent: -9999em;
+    background: url(sprite.png) no-repeat;
+    display: block;
+}
+.viewer .controls li a:hover:not(.disabled) {
+    background-color: #bbbbbb;
+}
+.viewer .controls li a.disabled {
+    opacity: 0.3;
+}
+.viewer .controls li a.next {
+    background-position: -24px 0;
+}
+.viewer .controls li a.refresh {
+    background-position: -48px 0;
+}
