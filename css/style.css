@@ -44,7 +44,7 @@ body .Ymacs-Theme-dark .Ymacs_Frame-focus .Ymacs-caret {
     display: none;
 }
 .split {
-    height: 100vh;
+    height: 100vh !important;
 }
 .splitter_panel .viewer {
     overflow: hidden;
