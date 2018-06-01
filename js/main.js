@@ -145,7 +145,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                     }
                     if (!raw && language && Prism.languages[language]) {
                         var grammar = Prism.languages[language];
-                        var tokens = Prism.tokenize(file, grammar);
+                        var tokens = Prism.tokenize(text, grammar);
                         text = Prism.Token.stringify(tokens, language);
                     }
                     cb(text);
@@ -1111,7 +1111,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 '\t[[!;;;;https://github.com/inexorabletash/polyfill]keyboard key polyfill] by Joshua Bell',
                 '\t[[!;;;;https://github.com/jcubic/jsvi]jsvi] originaly by Internet Connection, Inc. with changes from Jakub Jankiewicz',
                 '\t[[!;;;;https://github.com/Olical/EventEmitter/]EventEmitter] by Oliver Caldwell',
-                '\t[[!;;;;https://github.com/PrismJS/prism]PrimsJS] by Lea Verou',
+                '\t[[!;;;;https://github.com/PrismJS/prism]PrismJS] by Lea Verou',
                 '\t[[!;;;;https://github.com/kpdecker/jsdiff]jsdiff] by Kevin Decker',
                 '\t[[!;;;;https://github.com/softius/php-cross-domain-proxy]AJAX Cross Domain (PHP) Proxy] by Iacovos Constantinou',
                 '\t[[!;;;;https://github.com/jcubic/Clarity]Clarity icons] by Jakub Jankiewicz',
@@ -1428,55 +1428,6 @@ function init_ymacs() {
     });
     return ymacs;
 }
-// ---------------------------------------------------------------------------------------------------------
-// prism overwrite to produce terminal formatting instead of html
-(function(Token) {
-    var _ = Prism;
-    _.Token = function(type, content, alias, matchedStr, greedy) {
-        Token.apply(this, [].slice.call(arguments));
-    };
-    _.Token.stringify = function(o, language, parent) {
-        if (typeof o == 'string') {
-            return o;
-        }
-
-        if (_.util.type(o) === 'Array') {
-            return o.map(function(element) {
-                return _.Token.stringify(element, language, o);
-            }).join('');
-        }
-
-        var env = {
-            type: o.type,
-            content: _.Token.stringify(o.content, language, parent),
-            tag: 'span',
-            classes: ['token', o.type],
-            attributes: {},
-            language: language,
-            parent: parent
-        };
-
-        if (env.type == 'comment') {
-            env.attributes['spellcheck'] = 'true';
-        }
-
-        if (o.alias) {
-            var aliases = _.util.type(o.alias) === 'Array' ? o.alias : [o.alias];
-            Array.prototype.push.apply(env.classes, aliases);
-        }
-
-        _.hooks.run('wrap', env);
-
-        var attributes = Object.keys(env.attributes).map(function(name) {
-            return name + '="' + (env.attributes[name] || '').replace(/"/g, '&quot;') + '"';
-        }).join(' ');
-
-        return env.content.split(/\n/).map(function(content) {
-            return '[[b;;;' + env.classes.join(' ') + ']' + content + ']';
-        }).join('\n');
-
-    };
-})(Prism.Token);
 
 // ---------------------------------------------------------------------------------------------------------
 function time() {
