@@ -1079,10 +1079,18 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 });
                 function clone() {
                     term.echo(`Cloning into '${repo_dir}'...`);
+                    var auth = {};
+                    if (credentials.username && credentials.password) {
+                        auth = {
+                            authUsername: credentials.username,
+                            authPassword: credentials.password
+                        };
+                    }
                     git.clone({
                         fs: fs,
                         dir: repo_dir,
                         url: url,
+                        ...auth,
                         depth: depth ? +depth : 2,
                         singleBranch: true,
                         emitter: emitter
@@ -1209,8 +1217,9 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
         }
     }, {
         execHash: true,
-        // fix wierd jumping on windows/chrome
-        scrollObject: 'body',
+        onResize: function() {
+            this.innerHeight(this.parent().height());
+        },
         completion: function(string, cb) {
             var cmd = $.terminal.parse_command(this.before_cursor());
             function processAssets(callback) {
