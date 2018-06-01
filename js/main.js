@@ -523,7 +523,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                     if (cmd.args.length) {
                         term.pause();
                         var dir = await gitroot(cwd);
-                        var emitter = messageEmitter();
+                        var emitter = messageEmitter(/^Compressing/);
                         await git.fetch({
                             fs,
                             dir,
