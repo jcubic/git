@@ -1114,8 +1114,9 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 '\t[[!;;;;https://github.com/PrismJS/prism]PrimsJS] by Lea Verou',
                 '\t[[!;;;;https://github.com/kpdecker/jsdiff]jsdiff] by Kevin Decker',
                 '\t[[!;;;;https://github.com/softius/php-cross-domain-proxy]AJAX Cross Domain (PHP) Proxy] by Iacovos Constantinou',
-                '\n[[!;;;;https://github.com/jcubic/Clarity]Clarity icons] by Jakub Jankiewicz',
-                '\n[[!;;;;https://github.com/jcubic/jquery.splitter]jQuery Splitter] by Jakub Jankiewicz',
+                '\t[[!;;;;https://github.com/jcubic/Clarity]Clarity icons] by Jakub Jankiewicz',
+                '\t[[!;;;;https://github.com/jcubic/jquery.splitter]jQuery Splitter] by Jakub Jankiewicz',
+                '\t[[!;;;;http://www.ymacs.org/]Ymacs] by Mihai Bazon & Dynarch.com',
                 '',
                 'Contributors:'
             ].concat(contributors.map(user => '\t[[!;;;;' + user.url + ']' + (user.fullname || user.name) + ']'));
