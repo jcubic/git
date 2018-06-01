@@ -39,12 +39,27 @@ body .Ymacs-Theme-dark .Ymacs_Frame-focus .Ymacs-caret {
     border-left: 1px solid white;
     bottom: 0;
 }
-.DlDesktop { display: none; }
+.terminal-view > .DlContainer {
+    position: absolute;
+    display: none;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100% !important;
+}
+.Ymacs_Minibuffer {
+    min-height: 14px;
+}
+.terminal-view {
+    position: relative;
+}
 .viewer {
     display: none;
 }
 .split {
     height: 100vh !important;
+    z-index: 100;
 }
 .splitter_panel .viewer {
     overflow: hidden;

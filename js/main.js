@@ -256,38 +256,32 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             }
         },
         emacs: function(cmd) {
-            if (ymacs_loading) {
-                term.echo('Loading Emacs (it take few seconds, but only first time)...').pause();
+            term.resume();
+            var fname = cmd.args[0];
+            if (typeof fname !== 'string') {
+                fname = String(fname);
             }
-            ymacs_promise.then(ymacs => {
-                term.resume();
-                var fname = cmd.args[0];
-                if (typeof fname !== 'string') {
-                    fname = String(fname);
-                }
-                function init() {
-                    setTimeout(function() {
-                        term.focus(false);
-                        $('.DlDesktop').show();
-                        desktop.fullScreen();
-                        ymacs.focus();
-                        ymacs.disabled(false);
-                        desktop.callHooks('onResize');
-                    }, 0);
-                }
-                if (fname) {
-                    var path;
-                    if (fname.match(/^\//)) {
-                        path = fname;
-                    } else {
-                        path = (cwd === '/' ? '' : cwd) + '/' + fname;
-                    }
-                    init();
-                    ymacs.getActiveBuffer().cmd('find_file', path);
+            function init() {
+                setTimeout(function() {
+                    term.focus(false);
+                    $('.Ymacs, .DlLayout').show();
+                    ymacs.focus();
+                    ymacs.disabled(false);
+                    ymacs.callHooks('onResize');
+                }, 0);
+            }
+            if (fname) {
+                var path;
+                if (fname.match(/^\//)) {
+                    path = fname;
                 } else {
-                    init();
+                    path = (cwd === '/' ? '' : cwd) + '/' + fname;
                 }
-            });
+                init();
+                ymacs.getActiveBuffer().cmd('find_file', path);
+            } else {
+                init();
+            }
         },
         vi: function(cmd) {
             var textarea = $('.vi');
@@ -1133,9 +1127,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             ].join('\n'));
         }
     };
-    var ymacs_loading = true;
-    var ymacs_promise = init_ymacs();
-    ymacs_promise.then(() => ymacs_loading = false);
+    var ymacs = init_ymacs();
     var scrollTop;
     var view = (function() {
         var base = location.pathname.replace(/\/[^\/]+$/, '/');
@@ -1288,189 +1280,143 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
 
 // ---------------------------------------------------------------------------------------------------------
 function init_ymacs() {
-    var root = 'https://rawgit.com/jcubic/leash/master/lib/apps/ymacs/';
-    function style(url) {
-        $('<link/>').attr({
-            href: url,
-            rel: 'stylesheet'
-        }).appendTo('head');
-    }
-    var files = [
-        'test/dl/js/thelib.js',
-        'src/js/ymacs.js',
-        'src/js/ymacs-keyboard.js',
-        'src/js/ymacs-regexp.js',
-        'src/js/ymacs-frame.js',
-        'src/js/ymacs-textprop.js',
-        'src/js/ymacs-exception.js',
-        'src/js/ymacs-interactive.js',
-        'src/js/ymacs-buffer.js',
-        'src/js/ymacs-marker.js',
-        'src/js/ymacs-commands.js',
-        'src/js/ymacs-commands-utils.js',
-        'src/js/ymacs-keymap.js',
-        'src/js/ymacs-keymap-emacs.js',
-        'src/js/ymacs-keymap-isearch.js',
-        'src/js/ymacs-minibuffer.js',
-        'src/js/ymacs-tokenizer.js',
-        'src/js/ymacs-mode-paren-match.js',
-        'src/js/ymacs-mode-lisp.js',
-        'src/js/ymacs-mode-js.js',
-        'src/js/ymacs-mode-xml.js',
-        'src/js/ymacs-mode-css.js',
-        'src/js/ymacs-mode-markdown.js',
-    ];
-    var promise = new Promise(function(resolve) {
-        (function loop() {
-            var file = files.shift();
-            if (!file) {
-                resolve();
-            } else {
-                $.getScript(root + file).then(loop);
-            }
-        })();
+    var ymacs = new Ymacs({
+        buffers: [ ],
+        className: "Ymacs-blinking-caret"
     });
-    style(root + 'test/dl/new-theme/default.css');
-    style(root + 'src/css/ymacs.css');
-    // -----------------------------------------------------------------------------------------------------
-    return promise.then(() => {
-        var ymacs = new Ymacs({
-            buffers: [ ],
-            className: "Ymacs-blinking-caret"
-        });
-        desktop = new DlDesktop({});
-        layout = new DlLayout({ parent: desktop });
-        ymacs.setColorTheme([ "dark", "y" ]);
-        ymacs.disabled(true);
-        layout.packWidget(ymacs, { pos: "bottom", fill: "*" });
-        try {
-            ymacs.getActiveBuffer().cmd("eval_file", ".ymacs");
-        } catch(ex) {}
-        // -------------------------------------------------------------------------------------------------
-        Ymacs.prototype.fs_setFileContents = function(name, content, stamp, cont) {
-            var self = this;
-            if (stamp) {
-                fs.readFile(name, function(err, file) {
-                    if (file != stamp) {
-                        cont(null);
-                    } else {
-                        self.fs_setFileContents(name, content, false, cont);
-                    }
-                });
+    ymacs.setColorTheme([ "dark", "y" ]);
+    ymacs.disabled(true);
+    var wrapper = $('.terminal-view').resizer(function() {
+        ymacs.callHooks('onResize');
+    });
+    $(ymacs.getElement()).appendTo(wrapper);
+    try {
+        ymacs.getActiveBuffer().cmd("eval_file", ".ymacs");
+    } catch(ex) {}
+    // -------------------------------------------------------------------------------------------------
+    Ymacs.prototype.fs_setFileContents = function(name, content, stamp, cont) {
+        var self = this;
+        if (stamp) {
+            fs.readFile(name, function(err, file) {
+                if (file != stamp) {
+                    cont(null);
+                } else {
+                    self.fs_setFileContents(name, content, false, cont);
+                }
+            });
+        } else {
+            fs.writeFile(name, content, function(err, written) {
+                if (!err) {
+                    cont(content);
+                } else {
+                    self.getActiveBuffer().signalInfo("Can't save file");
+                }
+            });
+        }
+    };
+    // -------------------------------------------------------------------------------------------------
+    Ymacs.prototype.fs_getFileContents = function(name, nothrow, cont) {
+        var self = this;
+        console.log(name);
+        fs.stat(name, function(err, stat) {
+            if (err || !stat.isFile()) {
+                cont(null, null);
             } else {
-                fs.writeFile(name, content, function(err, written) {
-                    if (!err) {
-                        cont(content);
+                fs.readFile(name, function(err, file) {
+                    if (err) {
+                        if (!nothrow) {
+                            throw new Ymacs_Exception("File not found");
+                        } else {
+                            self.getActiveBuffer().signalInfo("Can't open file");
+                        }
                     } else {
-                        self.getActiveBuffer().signalInfo("Can't save file");
+                        cont(file.toString(), file.toString());
                     }
                 });
             }
-        };
-        // -------------------------------------------------------------------------------------------------
-        Ymacs.prototype.fs_getFileContents = function(name, nothrow, cont) {
-            var self = this;
-            console.log(name);
-            fs.stat(name, function(err, stat) {
-                if (err || !stat.isFile()) {
-                    cont(null, null);
+        });
+    };
+    // -------------------------------------------------------------------------------------------------
+    Ymacs.prototype.fs_fileType = function(name, cont) {
+        fs.stat(name, function(err, stat) {
+            cont(err || stat.isFile() ? true : null);
+        });
+    };
+    // -------------------------------------------------------------------------------------------------
+    Ymacs.prototype.fs_normalizePath = function(path) {
+        return path;
+    };
+    // -------------------------------------------------------------------------------------------------
+    Ymacs.prototype.fs_getDirectory = function(dir, cont) {
+        fs.readdir(dir, function(err, list) {
+            var result = {};
+            (function loop() {
+                var obj = list.shift();
+                if (!obj) {
+                    cont(result);
                 } else {
-                    fs.readFile(name, function(err, file) {
-                        if (err) {
-                            if (!nothrow) {
-                                throw new Ymacs_Exception("File not found");
-                            } else {
-                                self.getActiveBuffer().signalInfo("Can't open file");
-                            }
-                        } else {
-                            cont(file.toString(), file.toString());
+                    fs.stat(dir + '/' + obj, function(err, stat) {
+                        if (!err) {
+                            result[obj] = {type: stat.isFile() ? 'file' : 'directory'}
+                            loop();
                         }
                     });
                 }
-            });
-        };
-        // -------------------------------------------------------------------------------------------------
-        Ymacs.prototype.fs_fileType = function(name, cont) {
-            fs.stat(name, function(err, stat) {
-                cont(err || stat.isFile() ? true : null);
-            });
-        };
-        // -------------------------------------------------------------------------------------------------
-        Ymacs.prototype.fs_normalizePath = function(path) {
-            return path;
-        };
-        // -------------------------------------------------------------------------------------------------
-        Ymacs.prototype.fs_getDirectory = function(dir, cont) {
-            fs.readdir(dir, function(err, list) {
-                var result = {};
-                (function loop() {
-                    var obj = list.shift();
-                    if (!obj) {
-                        cont(result);
-                    } else {
-                        fs.stat(dir + '/' + obj, function(err, stat) {
-                            if (!err) {
-                                result[obj] = {type: stat.isFile() ? 'file' : 'directory'}
-                                loop();
-                            }
-                        });
+            })();
+        });
+    };
+    // -------------------------------------------------------------------------------------------------
+    Ymacs_Buffer.newCommands({
+        exit: Ymacs_Interactive(function() {
+            var buffs = ymacs.buffers.slice();
+            (function loop() {
+                var buff = buffs.shift();
+                if (buff.length > 1) {
+                    function next() {
+                        ymacs.killBuffer(buff);
+                        loop();
                     }
-                })();
-            });
-        };
-        // -------------------------------------------------------------------------------------------------
-        Ymacs_Buffer.newCommands({
-            exit: Ymacs_Interactive(function() {
-                var buffs = ymacs.buffers.slice();
-                (function loop() {
-                    var buff = buffs.shift();
-                    if (buff.length > 1) {
-                        function next() {
-                            ymacs.killBuffer(buff);
-                            loop();
+                    if (buff.name != '*scratch*') {
+                        if (buff.dirty()) {
+                            var msg = 'Save file ' + buff.name + ' yes or no?';
+                            buff.cmd('minibuffer_yn', msg, function(yes) {
+                                if (yes) {
+                                    buff.cmd('save_buffer_with_continuation',
+                                             false,
+                                             next);
+                                } else {
+                                    next();
+                                }
+                            });
+                        } else {
+                            next();
                         }
-                        if (buff.name != '*scratch*') {
-                            if (buff.dirty()) {
-                                var msg = 'Save file ' + buff.name + ' yes or no?';
-                                buff.cmd('minibuffer_yn', msg, function(yes) {
-                                    if (yes) {
-                                        buff.cmd('save_buffer_with_continuation',
-                                                 false,
-                                                 next);
-                                    } else {
-                                        next();
-                                    }
-                                });
-                            } else {
-                                next();
-                            }
-                        }
-                    } else {
-                        $('.DlDesktop').hide();
-                        ymacs.disabled(true);
-                        $.terminal.active().focus();
                     }
-                })();
-            }),
-            next_buffer: Ymacs_Interactive(function() {
-                var buffs = ymacs.buffers.slice();
-                var buff = ymacs.getActiveBuffer();
-                while(buffs.shift() != buff) {}
-                if (buffs.length) {
-                    ymacs.switchToBuffer(buffs[0]);
                 } else {
-                    ymacs.switchToBuffer(ymacs.buffers[0]);
+                    $('.DlDesktop, .DlLayout, .Ymacs').hide();
+                    ymacs.disabled(true);
+                    $.terminal.active().focus();
                 }
-            })
-        });
-        // -------------------------------------------------------------------------------------------------
-        DEFINE_SINGLETON("Ymacs_Keymap_Leash", Ymacs_Keymap_Emacs, function(D, P) {
-            D.KEYS = {
-                "C-x C-c": "exit"
-            };
-        });
-        return ymacs;
+            })();
+        }),
+        next_buffer: Ymacs_Interactive(function() {
+            var buffs = ymacs.buffers.slice();
+            var buff = ymacs.getActiveBuffer();
+            while(buffs.shift() != buff) {}
+            if (buffs.length) {
+                ymacs.switchToBuffer(buffs[0]);
+            } else {
+                ymacs.switchToBuffer(ymacs.buffers[0]);
+            }
+        })
     });
+    // -------------------------------------------------------------------------------------------------
+    DEFINE_SINGLETON("Ymacs_Keymap_Leash", Ymacs_Keymap_Emacs, function(D, P) {
+        D.KEYS = {
+            "C-x C-c": "exit"
+        };
+    });
+    return ymacs;
 }
 // ---------------------------------------------------------------------------------------------------------
 // prism overwrite to produce terminal formatting instead of html
