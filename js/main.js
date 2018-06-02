@@ -379,21 +379,25 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 var path_name = path.resolve(cwd + '/' + arg);
                 fs.stat(path_name, async (err, stat) => {
                     if (err) {
-                        term.error(err);
+                        error(err);
                     } else if (stat) {
-                        if (stat.isDirectory()) {
-                            if (options.match(/r/)) {
-                                await rmdir(path_name);
+                        try {
+                            if (stat.isDirectory()) {
+                                if (options.match(/r/)) {
+                                    await rmdir(path_name);
+                                } else {
+                                    term.error(`${path_name} is directory`);
+                                }
+                            } else if (stat.isFile()) {
+                                await new Promise((resolve) => fs.unlink(path_name, resolve));
                             } else {
-                                term.error(`${path_name} is directory`);
+                                term.error(`${path_name} is invalid`);
                             }
-                        } else if (stat.isFile()) {
-                            await new Promise((resolve) => fs.unlink(path_name, resolve));
-                        } else {
-                            term.error(`${path_name} is invalid`);
-                        }
-                        if (!--len) {
-                            term.resume();
+                            if (!--len) {
+                                term.resume();
+                            }
+                        } catch(e) {
+                            error(e);
                         }
                     }
                 });
