@@ -1181,7 +1181,7 @@ BrowserFS.configure({
                 splitter.destroy();
                 splitter = null;
                 viewer.hide();
-                term.css('width', '');
+                $('.terminal-view').css('width', '');
             }
         });
         var adress = viewer.find('input').on('keydown', function(e) {
