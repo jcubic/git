@@ -1846,3 +1846,77 @@ function mkdir(dir, parent = false) {
         }
     });
 }
+
+async function makeZip(dir, filepath) {
+    var zipWriter = await new Promise(function(resolve, reject) {
+        zip.createWriter(new zip.BlobWriter("application/zip"), function(writer) {
+            resolve(writer);
+        }, reject);
+    });
+    await traverseDirectory(dir, async function(stat, path) {
+        if (stat == 'file') {
+            await new Promise(function(resolve, reject) {
+                console.log(path);
+                fs.readFile(path, function(err, data) {
+                    if (err) {
+                        return reject(err);
+                    }
+                    var blob = new Blob([data], {
+                        type : "text/plain"
+                    });
+                    zipWriter.add(path, new zip.BlobReader(blob), resolve);
+                });
+            });
+        }
+    });
+    console.log('>>>>>>>>>>>>> zip');
+    return new Promise(function(resolve, reject) {
+        zipWriter.close(function(blob) {
+            var fileReader = new FileReader();
+            fileReader.onload = function() {
+                var arrayBuffer = this.result;
+                fs.writeFile(filepath, new buffer.Buffer(arrayBuffer), function(err) {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve();
+                    }
+                    });
+            };
+            fileReader.readAsArrayBuffer(blob);
+        });
+    });
+}
+
+function traverseDirectory(dir, callback) {
+    return new Promise(function(resolve, reject) {
+        fs.readdir(dir, async function(err, list) {
+            if (err) {
+                return reject(err);
+            }
+            for (var i = 0; i < list.length; i++) {
+                console.log('for ' + i);
+                var filename = path.join(dir, list[i]);
+                var stat = await new Promise(function(resolve, reject) {
+                    fs.stat(filename, function(err, stat) {
+                        if (err) {
+                            return reject(err);
+                        }
+                        resolve(stat);
+                    });
+                });
+                if (!filename.match(/^\.{1,2}$/)) {
+                    if (stat.isDirectory()) {
+                        await traverseDirectory(filename, callback);
+                    } else {
+                        console.log('callback');
+                        await callback('file', filename);
+                        console.log('awated');
+                    }
+                }
+            }
+            await callback('directory', dir);
+            resolve();
+        });
+    });
+}
