@@ -1172,7 +1172,7 @@ BrowserFS.configure({
     var ymacs = init_ymacs();
     var scrollTop;
     var view = (function() {
-        var base = location.pathname.replace(/\/[^\/]+$/, '/');
+        var base = location.pathname.replace(/\/[^\/]+$/, '/').replace(/__browserfs__.*/, '');
         var viewer = $('.viewer');
         var iframe = viewer.find('iframe');
         var splitter;
