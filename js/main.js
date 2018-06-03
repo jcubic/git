@@ -8,7 +8,13 @@
  * Released under the MIT license
  *
  */
-BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
+BrowserFS.configure({
+    fs: 'MountableFileSystem',
+    options: {
+        '/': { fs: 'IndexedDB', options: {}},
+        '/tmp': { fs: 'InMemory' }
+    }
+}, function (err) {
     var banner = [
         '  ____ ___ _____ ',
         ' / ___|_ _|_   _| __      __   _      _____              _           _',
@@ -29,6 +35,10 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
     }
     window.fs = BrowserFS.BFSRequire('fs');
     window.path = BrowserFS.BFSRequire('path');
+    window.buffer = BrowserFS.BFSRequire('buffer');
+    if (typeof zip !== 'undefined') {
+        zip.workerScriptsPath = location.pathname.replace(/\/[^\/]+$/, '/') + 'js/zip/';
+    }
     if ('serviceWorker' in navigator) {
         var scope = location.pathname.replace(/\/[^\/]+$/, '/');
         // loading this repo from browerFS will not work because serviceWorker can't be loaded from
@@ -403,6 +413,17 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
                 });
             });
         },
+        /*
+        zip: function(cmd) {
+            term.pause();
+            if (cmd.args.length === 2) {
+                makeZip.apply(null, cmd.args).then(() => {
+                    term.echo(`click to download [[!;;;;__browserfs__/${cmd.args[1]}]${cmd.args[1]}]`).resume();
+                }).catch(error);
+            } else {
+               term.echo('compress directory\nzip <DIRECTORY> zip.file');
+            }
+        },*/
         view: function(cmd) {
             if (cmd.args.length === 1) {
                 view(cmd.args[0]);
@@ -1127,17 +1148,25 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             term.echo(lines.join('\n') + '\n');
         },
         help: function() {
-            term.echo('\nList of commands: ' + Object.keys(commands).join(', '));
-            term.echo('List of Git commands: ' + Object.keys(commands.git).join(', '));
+            term.echo('\nList of commands: ' + Object.keys(commands).join(', '), {keepWords: true});
+            term.echo('List of Git commands: ' + Object.keys(commands.git).join(', '), {keepWords: true});
             term.echo([
                 '',
-                'to use git you first need to clone the repo; it may take a while (depending on the size),',
-                'then you can made changes using [[;#fff;]vi], use [[;#fff;]git add] and then [[;#fff;]git commit].',
+                'to use git you first need to clone the repo (by default it creates shallow clone with --depth 2),',
+                'then you can made changes using [[;#fff;]vi] or [[;#fff;]emacs], use [[;#fff;]git add] and then ' +
+                '[[;#fff;]git commit].',
+                '',
                 'Before you commit you need to use the command [[b;#fff;]git login] which will ask for credentials.',
                 'It will also ask for full name and email to be used in [[b;#fff;]git commit]. If you set the correct',
-                'username and password you can push to remote; if you type the wrong credentials you can call login again',
+                'username and password you can push to remote; if you\'ll type wrong credentials you can call login again.',
+                '',
+                'To view the files you can use [[;#fff;]view <file>] commands that will split terminal and open browser.',
+                'You can also open directories (it\'s just iframe with files served from browserfs using service worker).',
+                'If you have web app you can open it using file browser and [[;#fff;]view] command.',
+                '',
+                'You can use [[;#fff;]record start] to record commands in url hash so you can share commansds you\'ll type.',
                 ''
-            ].join('\n'));
+            ].join('\n'), {keepWords: true});
         }
     };
     var ymacs = init_ymacs();
