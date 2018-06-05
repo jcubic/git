@@ -496,12 +496,12 @@ BrowserFS.configure({
                         ref: 'HEAD',
                         depth: 1
                     });
-                    console.log({head, ref});
+                    //console.log({head, ref});
                     if (head != ref) {
                         await new Promise((resolve) => fs.writeFile(`${dir}/.git/HEAD`, ref, resolve));
                     }
                     var HEAD_after = await git.resolveRef({fs, dir, ref: 'HEAD'});
-                    console.log(JSON.stringify({HEAD_after, HEAD_before}));
+                    //console.log(JSON.stringify({HEAD_after, HEAD_before}));
                     if (HEAD_after === HEAD_before) {
                         term.echo('Already up-to-date.');
                     } else {
@@ -523,7 +523,7 @@ BrowserFS.configure({
                         output.push(diffStat(Object.values(diffs).map(val => val.diff)));
                         term.echo(output.join('\n'));
                     }
-                } catch(e) {
+                } catch (e) {
                     term.exception(e);
                 } finally {
                     term.resume();
@@ -554,7 +554,7 @@ BrowserFS.configure({
                             dir,
                             singleBranch: true,
                             ref: cmd.args[0],
-                            depth: 1,
+                            //depth: 1,
                             emitter
                         });
                     }
@@ -1116,12 +1116,10 @@ BrowserFS.configure({
                         dir: repo_dir,
                         url: url,
                         ...auth,
-                        depth: depth ? +depth : 2,
-                        singleBranch: true,
+                        //depth: depth ? +depth : 2,
+                        //singleBranch: true,
                         emitter: emitter
-                    }).then(() => {
-                        term.echo(`clone complete`).resume();
-                    }).catch(error);
+                    }).then(term.resume).catch(error);
                 }
             }
         },
