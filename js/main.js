@@ -1244,7 +1244,7 @@ BrowserFS.configure({
             } else {
                 term.error('Unknown command');
             }
-        } else {
+        } else if (command) {
             term.error('Unknown command');
         }
     }, {
