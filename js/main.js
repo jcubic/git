@@ -413,17 +413,16 @@ BrowserFS.configure({
                 });
             });
         },
-        /*
         zip: function(cmd) {
             term.pause();
             if (cmd.args.length === 2) {
-                makeZip.apply(null, cmd.args).then(() => {
+                makeZip.apply(null, cmd.args.map(resolve)).then(() => {
                     term.echo(`click to download [[!;;;;__browserfs__/${cmd.args[1]}]${cmd.args[1]}]`).resume();
                 }).catch(error);
             } else {
-               term.echo('compress directory\nzip <DIRECTORY> zip.file');
+               term.echo('compress directory\nzip <DIRECTORY> <ZIP FILENAME>');
             }
-        },*/
+        },
         view: function(cmd) {
             if (cmd.args.length === 1) {
                 view(cmd.args[0]);
@@ -1140,6 +1139,7 @@ BrowserFS.configure({
                 '\t[[!;;;;https://github.com/jcubic/Clarity]Clarity icons] by Jakub Jankiewicz',
                 '\t[[!;;;;https://github.com/jcubic/jquery.splitter]jQuery Splitter] by Jakub Jankiewicz',
                 '\t[[!;;;;http://www.ymacs.org/]Ymacs] by Mihai Bazon & Dynarch.com',
+                '\t[[!;;;;http://stuk.github.io/jszip/]JSZip] by Stuart Knightley',
                 '',
                 'Contributors:'
             ].concat(contributors.map(user => '\t[[!;;;;' + user.url + ']' + (user.fullname || user.name) + ']'));
@@ -1756,15 +1756,18 @@ async function gitReset({fs, dir, ref, branch, hard = false}) {
     }
     return Promise.reject(`Wrong ref ${ref}`);
 }
+
 // ---------------------------------------------------------------------------------------------------------
 function gitURL({fs, dir, gitdir = path.join(dir, '.git'), remote = 'origin'}) {
     return git.config({fs, gitdir, path: `remote.${remote}.url`});
 }
+
 // ---------------------------------------------------------------------------------------------------------
 async function repoURL({fs, dir, gitdir = path.join(dir, '.git'), remote = 'origin'}) {
     var url = await gitURL({fs, dir, gitdir, remote});
     return url.replace(/^https:\/\/jcubic.pl\/proxy.php\?/, '');
 }
+
 // ---------------------------------------------------------------------------------------------------------
 function getHEAD({dir, gitdir, remote = false}) {
     if (!remote) {
@@ -1792,6 +1795,8 @@ function getHEAD({dir, gitdir, remote = false}) {
         });
     });
 }
+
+// ---------------------------------------------------------------------------------------------------------
 function mkdir(dir, parent = false) {
     return new Promise(function(resolve, reject) {
         if (parent) {
@@ -1845,31 +1850,46 @@ function mkdir(dir, parent = false) {
     });
 }
 
+// ---------------------------------------------------------------------------------------------------------
 async function makeZip(dir, filepath) {
-    var zipWriter = await new Promise(function(resolve, reject) {
-        zip.createWriter(new zip.BlobWriter("application/zip"), function(writer) {
-            resolve(writer);
-        }, reject);
-    });
-    await traverseDirectory(dir, async function(stat, path) {
-        if (stat == 'file') {
+    dir = dir.replace(/\/?$/, '/');
+    var zip = new JSZip();
+    var directories = {};
+    var re = new RegExp('^' + dir);
+    await traverseDirectory(dir, async function(stat, filepath) {
+        var relPath = filepath.replace(re, '').replace(/^\//, '');
+        if (stat == 'directory') {
+            if (filepath !== dir) {
+                console.log({relPath});
+                directories[relPath] = zip.folder(relPath);
+            }
+        } else if (stat == 'file') {
+            var parts = relPath.split('/');
+            var filename = parts.pop();
+            var dir = parts.join('/');
+            console.log({dir, filename});
             await new Promise(function(resolve, reject) {
-                console.log(path);
-                fs.readFile(path, function(err, data) {
+                console.log(filepath);
+                fs.readFile(filepath, function(err, data) {
                     if (err) {
                         return reject(err);
                     }
                     var blob = new Blob([data], {
                         type : "text/plain"
                     });
-                    zipWriter.add(path, new zip.BlobReader(blob), resolve);
+                    (directories[dir] || zip).file(filename, data);
+                    resolve();
                 });
             });
         }
-    });
-    console.log('>>>>>>>>>>>>> zip');
+    }, {parentFirst: true});
+    return writeZip(zip, filepath);
+}
+
+// ---------------------------------------------------------------------------------------------------------
+function writeZip(zip, filepath) {
     return new Promise(function(resolve, reject) {
-        zipWriter.close(function(blob) {
+        zip.generateAsync({type:"blob"}).then(function(blob) {
             var fileReader = new FileReader();
             fileReader.onload = function() {
                 var arrayBuffer = this.result;
@@ -1879,21 +1899,27 @@ async function makeZip(dir, filepath) {
                     } else {
                         resolve();
                     }
-                    });
+                });
             };
             fileReader.readAsArrayBuffer(blob);
         });
     });
 }
 
-function traverseDirectory(dir, callback) {
+// ---------------------------------------------------------------------------------------------------------
+function traverseDirectory(dir, callback, options) {
+    var settings = $.extend({}, {
+        parentFirst: false
+    }, options);
     return new Promise(function(resolve, reject) {
         fs.readdir(dir, async function(err, list) {
             if (err) {
                 return reject(err);
             }
+            if (settings.parentFirst) {
+                await callback('directory', dir);
+            }
             for (var i = 0; i < list.length; i++) {
-                console.log('for ' + i);
                 var filename = path.join(dir, list[i]);
                 var stat = await new Promise(function(resolve, reject) {
                     fs.stat(filename, function(err, stat) {
@@ -1905,15 +1931,15 @@ function traverseDirectory(dir, callback) {
                 });
                 if (!filename.match(/^\.{1,2}$/)) {
                     if (stat.isDirectory()) {
-                        await traverseDirectory(filename, callback);
+                        await traverseDirectory(filename, callback, options);
                     } else {
-                        console.log('callback');
                         await callback('file', filename);
-                        console.log('awated');
                     }
                 }
             }
-            await callback('directory', dir);
+            if (!settings.parentFirst) {
+                await callback('directory', dir);
+            }
             resolve();
         });
     });
