@@ -1068,7 +1068,7 @@ BrowserFS.configure({
                 });
                 var depth = getOption(/^--depth/, cmd.args);
                 var url = 'https://jcubic.pl/proxy.php?' + args[0];
-                re = /\/([^\/]+)(\.git)?$/;
+                re = /\/([^\/]+?)(\.git)?$/;
                 var repo_dir = path.join(cwd, (args.length === 2 ? args[1] : args[0].match(re)[1]));
                 fs.stat(repo_dir, function(err, stat) {
                     if (err) {
