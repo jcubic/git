@@ -53,6 +53,7 @@ body .Ymacs-Theme-dark .Ymacs_Frame-focus .Ymacs-caret {
 }
 .terminal-view {
     position: relative;
+    height: 100%;
 }
 .viewer {
     display: none;
