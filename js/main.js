@@ -65,36 +65,35 @@ BrowserFS.configure({
         let count = 0;
         Object.getOwnPropertyNames(git).forEach(function(name) {
             var emitter_handler = null;
-            git_wrapper[name] = function(args) {
-                return new Promise(function(resolve, reject) {
-                    var id = `rpc${++counter}`;
-                    if (args.emitter instanceof EventEmitter) {
-                        var emitter = args.emitter;
-                        delete args.emitter;
-                        if (emitter_handler) {
-                            window.removeEventListener("message", emitter_handler);
+            if (typeof git[name] === 'function') {
+                git_wrapper[name] = function({emitter, fs, ...args}) {
+                    return new Promise(function(resolve, reject) {
+                        var id = `rpc${++counter}`;
+                        if (emitter instanceof EventEmitter) {
+                            emitter_handler = function handler({data}) {
+                                if (data.type === 'EMITTER' && id === data.id) {
+                                    emitter.trigger('message', data.message);
+                                }
+                            };
+                            window.addEventListener("message", emitter_handler);
                         }
-                        emitter_handler = function handler({data}) {
-                            if (data.type === 'EMITTER' && id === data.id) {
-                                emitter.trigger('message', data.message);
+                        window.addEventListener("message", function handler({ data }) {
+                            if (data.type === 'RPC' && id === data.id) {
+                                if (emitter_handler) {
+                                    window.removeEventListener("message", emitter_handler);
+                                }
+                                if (data.error) {
+                                    reject(data.error);
+                                } else {
+                                    resolve(data.result);
+                                }
+                                window.removeEventListener("message", handler);
                             }
-                        };
-                        window.addEventListener("message", emitter_handler);
-                    } else {
-                        delete args.emitter;
-                    }
-                    delete args.fs;
-                    window.addEventListener("message", function handler({ data }) {
-                        if (data.error) {
-                            reject(data.error);
-                        } else {
-                            resolve(data.result);
-                        }
-                        window.removeEventListener("message", handler);
+                        });
+                        worker.postMessage({ type: "RPC", method: name, params: args});
                     });
-                    worker.postMessage({ type: "RPC", method: name, params: args});
-                });
-            };
+                }
+            }
         });
     } else {
         Object.getOwnPropertyNames(git).forEach(function(name) {
