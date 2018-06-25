@@ -68,29 +68,41 @@ BrowserFS.configure({
             if (typeof git[name] === 'function') {
                 git_wrapper[name] = function({emitter, fs, ...args}) {
                     return new Promise(function(resolve, reject) {
-                        var id = `rpc${++counter}`;
+                        var id = `rpc${++count}`;
                         if (emitter instanceof EventEmitter) {
                             emitter_handler = function handler({data}) {
                                 if (data.type === 'EMITTER' && id === data.id) {
-                                    emitter.trigger('message', data.message);
+                                    emitter.trigger('message', [data.message]);
                                 }
                             };
-                            window.addEventListener("message", emitter_handler);
+                            args.emitter = true;
+                            worker.addEventListener("message", emitter_handler);
                         }
-                        window.addEventListener("message", function handler({ data }) {
+                        worker.addEventListener("message", function handler({ data }) {
                             if (data.type === 'RPC' && id === data.id) {
                                 if (emitter_handler) {
-                                    window.removeEventListener("message", emitter_handler);
+                                    worker.removeEventListener("message", emitter_handler);
                                 }
-                                if (data.error) {
-                                    reject(data.error);
-                                } else {
-                                    resolve(data.result);
-                                }
-                                window.removeEventListener("message", handler);
+                                // Sync BrowserFS
+                                BrowserFS.configure({
+                                    fs: 'MountableFileSystem',
+                                    options: {
+                                        '/': { fs: 'IndexedDB', options: {}},
+                                        '/tmp': { fs: 'InMemory' }
+                                    }
+                                }, function (err) {
+                                    window.fs = BrowserFS.BFSRequire('fs');
+                                    if (data.error) {
+                                        reject(data.error);
+                                    } else {
+                                        resolve(data.result);
+                                    }
+                                });
+                                
+                                worker.removeEventListener("message", handler);
                             }
                         });
-                        worker.postMessage({ type: "RPC", method: name, params: args});
+                        worker.postMessage({ type: "RPC", method: name, id, params: args});
                     });
                 }
             }
@@ -1356,7 +1368,7 @@ BrowserFS.configure({
                 '$ '
             ].join(''));
         }
-    }).echo(greetings);
+    })//.echo(greetings);
 });
 
 // ---------------------------------------------------------------------------------------------------------
@@ -1948,7 +1960,7 @@ function writeZip(zip, filepath) {
 
 // ---------------------------------------------------------------------------------------------------------
 function traverseDirectory(dir, callback, options) {
-    var settings = $.extend({}, {
+    var settings = Object.assign({}, {
         parentFirst: false
     }, options);
     return new Promise(function(resolve, reject) {
