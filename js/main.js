@@ -422,7 +422,7 @@ BrowserFSConfigure().then(() => {
             }
             list(cwd + '/' + (args[0] || '')).then((content) => {
                 var dirs = filter(['.', '..'].concat(content.dirs)).map((dir) => color('blue', dir));
-                term.echo(dirs.concat(filter(content.files)).join('\n'));
+                term.echo(dirs.concat(filter(content.files)));
             });
         },
         clean: function() {
