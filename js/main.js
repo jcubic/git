@@ -8,31 +8,43 @@
  * Released under the MIT license
  *
  */
-BrowserFS.configure({
-    fs: 'MountableFileSystem',
-    options: {
-        '/': { fs: 'IndexedDB', options: {}},
-        '/tmp': { fs: 'InMemory' }
-    }
-}, function (err) {
-    var banner = [
-        '  ____ ___ _____ ',
-        ' / ___|_ _|_   _| __      __   _      _____              _           _',
-        '| |  _ | |  | |   \\ \\    / /__| |__  |_   _|__ _ _ _ __ (_)_ _  __ _| |',
-        '| |_| || |  | |    \\ \\/\\/ / -_) \'_ \\   | |/ -_) \'_| \'  \\| | \' \\/ _` | |',
-        ' \\____|___| |_|     \\_/\\_/\\___|_.__/   |_|\\___|_| |_|_|_|_|_||_\\__,_|_|'
-    ];
-    function greetings() {
-        var title = this.cols() > banner[1].length ? banner.join('\n') : 'GIT Web Terminal';
-        return title + '\n\n' + 'use [[;#fff;]help] to see the available commands' +
-               ' or [[;#fff;]credits] to list the projects used\n';
-    }
+ 
+var banner = [
+    '  ____ ___ _____ ',
+    ' / ___|_ _|_   _| __      __   _      _____              _           _',
+    '| |  _ | |  | |   \\ \\    / /__| |__  |_   _|__ _ _ _ __ (_)_ _  __ _| |',
+    '| |_| || |  | |    \\ \\/\\/ / -_) \'_ \\   | |/ -_) \'_| \'  \\| | \' \\/ _` | |',
+    ' \\____|___| |_|     \\_/\\_/\\___|_.__/   |_|\\___|_| |_|_|_|_|_||_\\__,_|_|'
+];
+function greetings() {
+    var title = this.cols() > banner[1].length ? banner.join('\n') : 'GIT Web Terminal';
+    return title + '\n\n' + 'use [[;#fff;]help] to see the available commands' +
+           ' or [[;#fff;]credits] to list the projects used\n';
+}
+function BrowserFSConfigure() {
+    return new Promise(function(resolve, reject) {
+        BrowserFS.configure({
+            fs: 'IndexedDB',
+            options: {}
+        }, function (err) {
+            if (err) {
+                var term = $.terminal.active();
+                if (!term) {
+                    term = $('.term').terminal(function(command, term) {
+                        term.error('BrowserFS was not initialized');
+                    }, {greetings: false, name: 'git'}).echo(greetings);
+                }
+                term.error(err.message || err);
+                reject(err.message || err);
+            } else {
+                resolve();
+            }
+        });
+    });
+}
+ 
+BrowserFSConfigure().then(() => {
     var name = 'git'; // terminal name for history
-    if (err) {
-        return $('.term').terminal(function(command, term) {
-            term.error('BrowserFS was not initialized');
-        }, {greetings: false, name}).echo(greetings).error(err.message || err);
-    }
     window.fs = BrowserFS.BFSRequire('fs');
     window.path = BrowserFS.BFSRequire('path');
     window.buffer = BrowserFS.BFSRequire('buffer');
@@ -84,13 +96,7 @@ BrowserFS.configure({
                                     worker.removeEventListener("message", emitter_handler);
                                 }
                                 // Sync BrowserFS
-                                BrowserFS.configure({
-                                    fs: 'MountableFileSystem',
-                                    options: {
-                                        '/': { fs: 'IndexedDB', options: {}},
-                                        '/tmp': { fs: 'InMemory' }
-                                    }
-                                }, function (err) {
+                                BrowserFSConfigure().then(() => {
                                     window.fs = BrowserFS.BFSRequire('fs');
                                     if (data.error) {
                                         reject(data.error);
