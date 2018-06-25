@@ -8,39 +8,51 @@
  * Released under the MIT license
  *
  */
-BrowserFS.configure({
-    fs: 'MountableFileSystem',
-    options: {
-        '/': { fs: 'IndexedDB', options: {}},
-        '/tmp': { fs: 'InMemory' }
-    }
-}, function (err) {
-    var banner = [
-        '  ____ ___ _____ ',
-        ' / ___|_ _|_   _| __      __   _      _____              _           _',
-        '| |  _ | |  | |   \\ \\    / /__| |__  |_   _|__ _ _ _ __ (_)_ _  __ _| |',
-        '| |_| || |  | |    \\ \\/\\/ / -_) \'_ \\   | |/ -_) \'_| \'  \\| | \' \\/ _` | |',
-        ' \\____|___| |_|     \\_/\\_/\\___|_.__/   |_|\\___|_| |_|_|_|_|_||_\\__,_|_|'
-    ];
-    function greetings() {
-        var title = this.cols() > banner[1].length ? banner.join('\n') : 'GIT Web Terminal';
-        return title + '\n\n' + 'use [[;#fff;]help] to see the available commands' +
-               ' or [[;#fff;]credits] to list the projects used\n';
-    }
+ 
+var banner = [
+    '  ____ ___ _____ ',
+    ' / ___|_ _|_   _| __      __   _      _____              _           _',
+    '| |  _ | |  | |   \\ \\    / /__| |__  |_   _|__ _ _ _ __ (_)_ _  __ _| |',
+    '| |_| || |  | |    \\ \\/\\/ / -_) \'_ \\   | |/ -_) \'_| \'  \\| | \' \\/ _` | |',
+    ' \\____|___| |_|     \\_/\\_/\\___|_.__/   |_|\\___|_| |_|_|_|_|_||_\\__,_|_|'
+];
+function greetings() {
+    var title = this.cols() > banner[1].length ? banner.join('\n') : 'GIT Web Terminal';
+    return title + '\n\n' + 'use [[;#fff;]help] to see the available commands' +
+           ' or [[;#fff;]credits] to list the projects used\n';
+}
+function BrowserFSConfigure() {
+    return new Promise(function(resolve, reject) {
+        BrowserFS.configure({
+            fs: 'IndexedDB',
+            options: {}
+        }, function (err) {
+            if (err) {
+                var term = $.terminal.active();
+                if (!term) {
+                    term = $('.term').terminal(function(command, term) {
+                        term.error('BrowserFS was not initialized');
+                    }, {greetings: false, name: 'git'}).echo(greetings);
+                }
+                term.error(err.message || err);
+                reject(err.message || err);
+            } else {
+                resolve();
+            }
+        });
+    });
+}
+ 
+BrowserFSConfigure().then(() => {
     var name = 'git'; // terminal name for history
-    if (err) {
-        return $('.term').terminal(function(command, term) {
-            term.error('BrowserFS was not initialized');
-        }, {greetings: false, name}).echo(greetings).error(err.message || err);
-    }
     window.fs = BrowserFS.BFSRequire('fs');
     window.path = BrowserFS.BFSRequire('path');
     window.buffer = BrowserFS.BFSRequire('buffer');
     if (typeof zip !== 'undefined') {
         zip.workerScriptsPath = location.pathname.replace(/\/[^\/]+$/, '/') + 'js/zip/';
     }
+    var scope = location.pathname.replace(/\/[^\/]+$/, '/');
     if ('serviceWorker' in navigator) {
-        var scope = location.pathname.replace(/\/[^\/]+$/, '/');
         // loading this repo from browerFS will not work because serviceWorker can't be loaded from
         // serivice worker.
         if (!scope.match(/__browserfs__/)) {
@@ -58,6 +70,53 @@ BrowserFS.configure({
                              console.log('Registration failed with ' + error);
                      });
         }
+    }
+    var git_wrapper = {};
+    if (typeof Worker !== 'undefined') {
+        var worker = new Worker(scope + 'js/git-worker.js');
+        let count = 0;
+        Object.getOwnPropertyNames(git).forEach(function(name) {
+            var emitter_handler = null;
+            if (typeof git[name] === 'function') {
+                git_wrapper[name] = function({emitter, fs, ...args}) {
+                    return new Promise(function(resolve, reject) {
+                        var id = `rpc${++count}`;
+                        if (emitter instanceof EventEmitter) {
+                            emitter_handler = function handler({data}) {
+                                if (data.type === 'EMITTER' && id === data.id) {
+                                    emitter.trigger('message', [data.message]);
+                                }
+                            };
+                            args.emitter = true;
+                            worker.addEventListener("message", emitter_handler);
+                        }
+                        worker.addEventListener("message", function handler({ data }) {
+                            if (data.type === 'RPC' && id === data.id) {
+                                if (emitter_handler) {
+                                    worker.removeEventListener("message", emitter_handler);
+                                }
+                                // Sync BrowserFS
+                                BrowserFSConfigure().then(() => {
+                                    window.fs = BrowserFS.BFSRequire('fs');
+                                    if (data.error) {
+                                        reject(data.error);
+                                    } else {
+                                        resolve(data.result);
+                                    }
+                                });
+                                
+                                worker.removeEventListener("message", handler);
+                            }
+                        });
+                        worker.postMessage({ type: "RPC", method: name, id, params: args});
+                    });
+                }
+            }
+        });
+    } else {
+        Object.getOwnPropertyNames(git).forEach(function(name) {
+            git_wrapper[name] = git[name].bind(git);
+        });
     }
     var dir = '/';
     var cwd = '/';
@@ -1110,8 +1169,7 @@ BrowserFS.configure({
                             authPassword: credentials.password
                         };
                     }
-                    git.clone({
-                        fs: fs,
+                    git_wrapper.clone({
                         dir: repo_dir,
                         url: url,
                         ...auth,
@@ -1316,7 +1374,7 @@ BrowserFS.configure({
                 '$ '
             ].join(''));
         }
-    }).echo(greetings);
+    })//.echo(greetings);
 });
 
 // ---------------------------------------------------------------------------------------------------------
@@ -1908,7 +1966,7 @@ function writeZip(zip, filepath) {
 
 // ---------------------------------------------------------------------------------------------------------
 function traverseDirectory(dir, callback, options) {
-    var settings = $.extend({}, {
+    var settings = Object.assign({}, {
         parentFirst: false
     }, options);
     return new Promise(function(resolve, reject) {
