@@ -628,7 +628,7 @@ BrowserFSConfigure().then(() => {
                     if (cmd.args.length) {
                         term.pause();
                         var dir = await gitroot(cwd);
-                        await git.checkout({fs, dir, ref: cmd.args[0]});
+                        await git_wrapper.checkout({fs, dir, ref: cmd.args[0]});
                         branch = await gitBranch({fs, cwd});
                     } else {
                         term.echo('to be implemented');
