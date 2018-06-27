@@ -1173,7 +1173,7 @@ BrowserFSConfigure().then(() => {
                         dir: repo_dir,
                         url: url,
                         ...auth,
-                        //depth: depth ? +depth : 2,
+                        depth: depth ? +depth : undefined,
                         //singleBranch: true,
                         emitter: emitter
                     }).then(term.resume).catch(error);
