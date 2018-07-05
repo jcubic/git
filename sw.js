@@ -10,119 +10,109 @@
  * Released under the MIT license
  *
  */
-
-function loadDependecies() {
-    self.skipWaiting().then(function() {
-        if (!self.fs) {
-            self.importScripts('https://cdn.jsdelivr.net/npm/browserfs');
-            BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
-                if (err) {
-                    console.log(err);
-                } else {
-                    self.fs = BrowserFS.BFSRequire('fs');
-                    self.path = BrowserFS.BFSRequire('path');
-                }
-            });
+/* global BrowserFS, Response, setTimeout, fetch, Blob */
+self.importScripts('https://cdn.jsdelivr.net/npm/browserfs');
+let path = BrowserFS.BFSRequire('path');
+let fs = new Promise(function(resolve, reject) {
+    BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
+        if (err) {
+            reject(err);
+        } else {
+            resolve(BrowserFS.BFSRequire('fs'));
         }
     });
-}
-self.addEventListener('install', loadDependecies);
+});
 
-self.addEventListener('activate', loadDependecies);
+self.addEventListener('install', self.skipWaiting);
+
+self.addEventListener('activate', self.skipWaiting);
 
 self.addEventListener('fetch', function (event) {
-    event.respondWith(new Promise(function(resolve, reject) {
-        function sendFile(path) {
-            fs.readFile(path, function(err, buffer) {
-                if (err) {
-                    err.fn = 'readFile(' + path + ')';
-                    return reject(err);
-                }
-                resolve(new Response(buffer));
-            });
-        }
-        var url = event.request.url;
-        var m = url.match(/__browserfs__(.*)/);
-        function redirect_dir() {
-            return resolve(Response.redirect(url + '/', 301));
-        }
-        function serve() {
-            fs.stat(path, function(err, stat) {
-                if (err) {
-                    return resolve(textResponse(error404(path)));
-                }
-                if (stat.isFile()) {
-                    sendFile(path);
-                } else if (stat.isDirectory()) {
-                    if (path.substr(-1, 1) !== '/') {
-                        return redirect_dir();
+    event.respondWith(fs.then(function(fs) {
+        return new Promise(function(resolve, reject) {
+            function sendFile(path) {
+                fs.readFile(path, function(err, buffer) {
+                    if (err) {
+                        err.fn = 'readFile(' + path + ')';
+                        return reject(err);
                     }
-                    fs.readdir(path, function(err, list) {
-                        if (err) {
-                            err.fn = 'readdir(' + path + ')';
-                            return reject(err);
+                    resolve(new Response(buffer));
+                });
+            }
+            var url = event.request.url;
+            var m = url.match(/__browserfs__(.*)/);
+            function redirect_dir() {
+                return resolve(Response.redirect(url + '/', 301));
+            }
+            function serve() {
+                fs.stat(path, function(err, stat) {
+                    if (err) {
+                        return resolve(textResponse(error404(path)));
+                    }
+                    if (stat.isFile()) {
+                        sendFile(path);
+                    } else if (stat.isDirectory()) {
+                        if (path.substr(-1, 1) !== '/') {
+                            return redirect_dir();
                         }
-                        var len = list.length;
-                        if (list.includes('index.html')) {
-                            sendFile(path + '/index.html');
-                        } else {
-                            var output = [
-                                '<!DOCTYPE html>',
-                                '<html>',
-                                '<body>',
-                                '<h1>BrowserFS</h1>',
-                                '<ul>'
-                            ];
-                            if (path.match(/^\/(.*\/)/)) {
-                                output.push('<li><a href="..">..</a></li>');
+                        fs.readdir(path, function(err, list) {
+                            if (err) {
+                                err.fn = 'readdir(' + path + ')';
+                                return reject(err);
                             }
-                            (function loop() {
-                                var file = list.shift();
-                                if (!file) {
-                                    output = output.concat(['</ul>', '</body>', '</html>']);
-                                    return resolve(textResponse(output.join('\n')));
+                            var len = list.length;
+                            if (list.includes('index.html')) {
+                                sendFile(path + '/index.html');
+                            } else {
+                                var output = [
+                                    '<!DOCTYPE html>',
+                                    '<html>',
+                                    '<body>',
+                                    '<h1>BrowserFS</h1>',
+                                    '<ul>'
+                                ];
+                                if (path.match(/^\/(.*\/)/)) {
+                                    output.push('<li><a href="..">..</a></li>');
                                 }
-                                fs.stat(path + '/' + file, function(err, stat) {
-                                    if (err) {
-                                        err.fn = 'stat(' + path + '/' + file + ')';
-                                        return reject(err);
+                                (function loop() {
+                                    var file = list.shift();
+                                    if (!file) {
+                                        output = output.concat(['</ul>', '</body>', '</html>']);
+                                        return resolve(textResponse(output.join('\n')));
                                     }
-                                    var name = file + (stat.isDirectory() ? '/' : '');
-                                    output.push('<li><a href="' + name + '">' + name + '</a></li>');
-                                    loop();
-                                });
-                            })();
-                        }
-                    });
-                }
-            });
-        }
-        if (m) {
-            var path = m[1];
-            if (path === '') {
-                return redirect_dir();
-            }
-            console.log('serving ' + path + ' from browserfs');
-            if (!self.fs) {
-                (function loop() {
-                    if (!self.fs) {
-                        setTimeout(loop, 400);
-                    } else {
-                        serve();
+                                    fs.stat(path + '/' + file, function(err, stat) {
+                                        if (err) {
+                                            err.fn = 'stat(' + path + '/' + file + ')';
+                                            return reject(err);
+                                        }
+                                        var name = file + (stat.isDirectory() ? '/' : '');
+                                        output.push('<li><a href="' + name + '">' + name + '</a></li>');
+                                        loop();
+                                    });
+                                })();
+                            }
+                        });
                     }
-                })();
-            } else {
+                });
+            }
+            if (m) {
+                var path = m[1];
+                if (path === '') {
+                    return redirect_dir();
+                }
+                console.log('serving ' + path + ' from browserfs');
                 serve();
+            } else {
+                if (event.request.cache === 'only-if-cached' && event.request.mode !== 'same-origin') {
+                    return;
+                }
+                //request = credentials: 'include'
+                fetch(event.request).then(resolve).catch(reject);
             }
-        } else {
-            if (event.request.cache === 'only-if-cached' && event.request.mode !== 'same-origin') {
-                return;
-            }
-            //request = credentials: 'include'
-            fetch(event.request).then(resolve).catch(reject);
-        }
+        });
     }));
 });
+
 function textResponse(string) {
     var blob = new Blob([string], {
         type: 'text/html'

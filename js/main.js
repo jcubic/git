@@ -104,7 +104,6 @@ BrowserFSConfigure().then(() => {
                                         resolve(data.result);
                                     }
                                 });
-                                
                                 worker.removeEventListener("message", handler);
                             }
                         });
@@ -1169,7 +1168,8 @@ BrowserFSConfigure().then(() => {
                             authPassword: credentials.password
                         };
                     }
-                    git_wrapper.clone({
+                    git.clone({
+                        fs,
                         dir: repo_dir,
                         url: url,
                         ...auth,
