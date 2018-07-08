@@ -538,7 +538,7 @@ BrowserFSConfigure().then(() => {
                         ref: 'HEAD',
                         depth: 1
                     });
-                    await git.pull({
+                    await git_wrapper.pull({
                         fs,
                         dir,
                         singleBranch: true,
@@ -606,7 +606,7 @@ BrowserFSConfigure().then(() => {
                         term.pause();
                         var dir = await gitroot(cwd);
                         var emitter = messageEmitter(/^Compressing/);
-                        await git.fetch({
+                        await git_wrapper.fetch({
                             fs,
                             dir,
                             singleBranch: true,
@@ -672,7 +672,7 @@ BrowserFSConfigure().then(() => {
                         } else {
                             output.push(` * [new branch]      ${branch} -> ${branch}`);
                         }
-                        await git.push({
+                        await git_wrapper.push({
                             fs,
                             dir,
                             ref: branch,
@@ -1168,7 +1168,7 @@ BrowserFSConfigure().then(() => {
                             authPassword: credentials.password
                         };
                     }
-                    git.clone({
+                    git_wrapper.clone({
                         fs,
                         dir: repo_dir,
                         url: url,
