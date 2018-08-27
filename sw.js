@@ -10,24 +10,25 @@
  * Released under the MIT license
  *
  */
-/* global BrowserFS, Response, setTimeout, fetch, Blob */
+/* global BrowserFS, Response, setTimeout, fetch, Blob, Headers */
 self.importScripts('https://cdn.jsdelivr.net/npm/browserfs');
-let path = BrowserFS.BFSRequire('path');
-let fs = new Promise(function(resolve, reject) {
-    BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
-        if (err) {
-            reject(err);
-        } else {
-            resolve(BrowserFS.BFSRequire('fs'));
-        }
-    });
-});
+
 
 self.addEventListener('install', self.skipWaiting);
 
 self.addEventListener('activate', self.skipWaiting);
 
 self.addEventListener('fetch', function (event) {
+    let path = BrowserFS.BFSRequire('path');
+    let fs = new Promise(function(resolve, reject) {
+        BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
+            if (err) {
+                reject(err);
+            } else {
+                resolve(BrowserFS.BFSRequire('fs'));
+            }
+        });
+    });
     event.respondWith(fs.then(function(fs) {
         return new Promise(function(resolve, reject) {
             function sendFile(path) {
@@ -36,7 +37,17 @@ self.addEventListener('fetch', function (event) {
                         err.fn = 'readFile(' + path + ')';
                         return reject(err);
                     }
-                    resolve(new Response(buffer));
+                    var ext = path.replace(/.*\./, '');
+                    var mime = {
+                        'html': 'text/html',
+                        'json': 'application/json',
+                        'js': 'application/javascript',
+                        'css': 'text/css'
+                    };
+                    var headers = new Headers({
+                        'Content-Type': mime[ext]
+                    });
+                    resolve(new Response(buffer, {headers}));
                 });
             }
             var url = event.request.url;
@@ -47,7 +58,7 @@ self.addEventListener('fetch', function (event) {
             function serve() {
                 fs.stat(path, function(err, stat) {
                     if (err) {
-                        return resolve(textResponse(error404(path)));
+                        return resolve(textResponse(error404Page(path)));
                     }
                     if (stat.isFile()) {
                         sendFile(path);
@@ -64,32 +75,9 @@ self.addEventListener('fetch', function (event) {
                             if (list.includes('index.html')) {
                                 sendFile(path + '/index.html');
                             } else {
-                                var output = [
-                                    '<!DOCTYPE html>',
-                                    '<html>',
-                                    '<body>',
-                                    '<h1>BrowserFS</h1>',
-                                    '<ul>'
-                                ];
-                                if (path.match(/^\/(.*\/)/)) {
-                                    output.push('<li><a href="..">..</a></li>');
-                                }
-                                (function loop() {
-                                    var file = list.shift();
-                                    if (!file) {
-                                        output = output.concat(['</ul>', '</body>', '</html>']);
-                                        return resolve(textResponse(output.join('\n')));
-                                    }
-                                    fs.stat(path + '/' + file, function(err, stat) {
-                                        if (err) {
-                                            err.fn = 'stat(' + path + '/' + file + ')';
-                                            return reject(err);
-                                        }
-                                        var name = file + (stat.isDirectory() ? '/' : '');
-                                        output.push('<li><a href="' + name + '">' + name + '</a></li>');
-                                        loop();
-                                    });
-                                })();
+                                listDirectory({fs, path, list}).then(function(list) {
+                                    resolve(textResponse(fileListingPage(path, list)));
+                                }).catch(reject);
                             }
                         });
                     }
@@ -112,15 +100,56 @@ self.addEventListener('fetch', function (event) {
         });
     }));
 });
+// -----------------------------------------------------------------------------
+function listDirectory({fs, path, list}) {
+    return new Promise(function(resolve, reject) {
+        var items = [];
+        (function loop() {
+            var item = list.shift();
+            if (!item) {
+                return resolve(items);
+            }
+            fs.stat(path + '/' + item, function(err, stat) {
+                if (err) {
+                    err.fn = 'stat(' + path + '/' + item + ')';
+                    return reject(err);
+                }
+                items.push(stat.isDirectory() ? item + '/' : item);
+                loop();
+            });
+        })();
+    });
+}
 
-function textResponse(string) {
+// -----------------------------------------------------------------------------
+function textResponse(string, filename) {
     var blob = new Blob([string], {
         type: 'text/html'
     });
     return new Response(blob);
 }
 
-function error404(path) {
+// -----------------------------------------------------------------------------
+function fileListingPage(path, list) {
+    var output = [
+        '<!DOCTYPE html>',
+        '<html>',
+        '<body>',
+        `<h1>BrowserFS ${path}</h1>`,
+        '<ul>'
+    ];
+    if (path.match(/^\/(.*\/)/)) {
+        output.push('<li><a href="..">..</a></li>');
+    }
+    list.forEach(function(name) {
+        output.push('<li><a href="' + name + '">' + name + '</a></li>');
+    });
+    output = output.concat(['</ul>', '</body>', '</html>']);
+    return output.join('\n');
+}
+
+// -----------------------------------------------------------------------------
+function error404Page(path) {
     var output = [
         '<!DOCTYPE html>',
         '<html>',

@@ -504,7 +504,7 @@ BrowserFSConfigure().then(() => {
                     var dir = await gitroot(cwd);
                     const ref = cmd.args.filter(arg => arg.match(/^HEAD/))[0];
                     if (ref) {
-                        await gitReset({fs, dir, hard, ref, branch});
+                        await gitReset({fs, dir, git: git_wrapper, hard, ref, branch});
                         const commits = await git.log({fs, dir, depth: 1});
                         const commit = commits.pop();
                         const head = await git.resolveRef({fs, dir, ref: 'HEAD'});
@@ -1031,13 +1031,18 @@ BrowserFSConfigure().then(() => {
                     if (!cmd.args.length) {
                         return git.listFiles({dir,fs}).then(files => {
                             return Promise.all(files.map((filepath) => {
-                                return git.status({fs, dir, filepath}).then(status => {
-                                    if (['unmodified', 'ignored'].includes(status)) {
-                                        return null;
-                                    } else {
-                                        return diff({dir, filepath});
-                                    }
-                                });
+                                try {
+                                    return git.status({fs, dir, filepath}).then(status => {
+                                        if (['unmodified', 'ignored'].includes(status)) {
+                                            return null;
+                                        } else {
+                                            return diff({dir, filepath});
+                                        }
+                                    });
+                                } catch(e) {
+                                    debugger;
+                                    throw e;
+                                }
                             }));
                         }).then((diffs) => {
                             return diffs.filter(Boolean).reduce((acc, diff) => {
@@ -1174,7 +1179,7 @@ BrowserFSConfigure().then(() => {
                         url: url,
                         ...auth,
                         depth: depth ? +depth : undefined,
-                        //singleBranch: true,
+                        singleBranch: true,
                         emitter: emitter
                     }).then(term.resume).catch(error);
                 }
@@ -1782,7 +1787,7 @@ function gitDiff({dir, filepath, branch}) {
     });
 }
 // ---------------------------------------------------------------------------------------------------------
-async function gitReset({fs, dir, ref, branch, hard = false}) {
+async function gitReset({fs, git, dir, ref, branch, hard = false}) {
     var re = /^HEAD~([0-9]+)$/
     var m = ref.match(re);
     if (m) {
