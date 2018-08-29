@@ -15,6 +15,7 @@ self.addEventListener('message', ({ data }) => {
         }
     }, function (err) {
         self.fs = BrowserFS.BFSRequire('fs');
+        git.plugins.set('fs', self.fs)
         let id = data.id;
         if (data.type !== 'RPC' || id === null) {
             return;
@@ -26,7 +27,6 @@ self.addEventListener('message', ({ data }) => {
                     self.postMessage({ type: 'EMITTER', id, message });
                 });
             }
-            data.params.fs = self.fs;
             git[data.method].call(git, data.params).then(result => {
                 self.postMessage({ type: 'RPC', id, result});
             }).catch((err) => {
