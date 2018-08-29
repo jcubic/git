@@ -48,6 +48,7 @@ BrowserFSConfigure().then(() => {
     window.fs = BrowserFS.BFSRequire('fs');
     window.path = BrowserFS.BFSRequire('path');
     window.buffer = BrowserFS.BFSRequire('buffer');
+    git.plugins.set('fs', window.fs);
     if (typeof zip !== 'undefined') {
         zip.workerScriptsPath = location.pathname.replace(/\/[^\/]+$/, '/') + 'js/zip/';
     }
@@ -253,16 +254,16 @@ BrowserFSConfigure().then(() => {
         return option === true ? false : option;
     }
     // -----------------------------------------------------------------------------------------------------
-    function getAllStats({fs, cwd, branch}) {
+    function getAllStats({cwd, branch}) {
         function notGitDir(name) {
             return !name.match(/^\.git\/?/);
         }
         return gitroot(cwd).then((dir) => {
-            return Promise.all([listBranchFiles({fs, dir, branch}), listDir(dir)]).then(([tracked, rest]) => {
+            return Promise.all([listBranchFiles({dir, branch}), listDir(dir)]).then(([tracked, rest]) => {
                 var re = new RegExp('^' + dir);
                 rest = rest.files.map(path => path.replace(re, ''));
                 return Promise.all(union(tracked, rest).filter(notGitDir).map(filepath => {
-                    return git.status({fs, dir, filepath}).then(status => {
+                    return git.status({dir, filepath}).then(status => {
                         return [filepath, status];
                     });
                 }));
@@ -270,15 +271,15 @@ BrowserFSConfigure().then(() => {
         });
     }
     // -----------------------------------------------------------------------------------------------------
-    function gitAddAll({fs, dir, branch, all}) {
-        return getAllStats({fs, cwd: dir, branch}).then((files) => {
+    function gitAddAll({dir, branch, all}) {
+        return getAllStats({cwd: dir, branch}).then((files) => {
             var skip_status = ['unmodified', 'ignored', 'modified', 'deleted', 'added', 'absent'];
             if (!all) {
                 skip_status.push('*added');
             }
             return files.filter(([_, status]) => !skip_status.includes(status));
         }).then((files) => {
-            return Promise.all(files.map(([filepath, status]) => git.add({fs, dir, filepath})));
+            return Promise.all(files.map(([filepath, status]) => git.add({dir, filepath})));
         });
     }
     const error = (e) => term.error(e.message || e).resume();
@@ -315,7 +316,7 @@ BrowserFSConfigure().then(() => {
                         term.error(`"${dirname}" is not a directory`).resume();
                     } else {
                         cwd = dirname == '/' ? dirname : dirname.replace(/\/$/, '');
-                        gitBranch({fs, cwd}).then(b => {
+                        gitBranch({cwd}).then(b => {
                             branch = b;
                             term.resume();
                         });
@@ -504,10 +505,10 @@ BrowserFSConfigure().then(() => {
                     var dir = await gitroot(cwd);
                     const ref = cmd.args.filter(arg => arg.match(/^HEAD/))[0];
                     if (ref) {
-                        await gitReset({fs, dir, git: git_wrapper, hard, ref, branch});
-                        const commits = await git.log({fs, dir, depth: 1});
+                        await gitReset({dir, git: git_wrapper, hard, ref, branch});
+                        const commits = await git.log({dir, depth: 1});
                         const commit = commits.pop();
-                        const head = await git.resolveRef({fs, dir, ref: 'HEAD'});
+                        const head = await git.resolveRef({dir, ref: 'HEAD'});
                         term.echo(`HEAD is now at ${commit.oid.substring(0, 7)} ${commit.message.trim()}`);
                     }
                 } catch(e) {
@@ -524,8 +525,8 @@ BrowserFSConfigure().then(() => {
                     term.pause();
                     var dir = await gitroot(cwd);
                     var remote = 'origin';
-                    var HEAD_before = await git.resolveRef({fs, dir, ref: 'HEAD'});
-                    var url = await repoURL({fs, dir});
+                    var HEAD_before = await git.resolveRef({dir, ref: 'HEAD'});
+                    var url = await repoURL({dir});
                     var output = [];
                     var auth = {};
                     if (credentials.password && credentials.username) {
@@ -533,13 +534,11 @@ BrowserFSConfigure().then(() => {
                         auth.authPassword = credentials.password;
                     }
                     var ref = await git.resolveRef({
-                        fs,
                         dir,
                         ref: 'HEAD',
                         depth: 1
                     });
                     await git_wrapper.pull({
-                        fs,
                         dir,
                         singleBranch: true,
                         fastForwardOnly: true,
@@ -548,7 +547,6 @@ BrowserFSConfigure().then(() => {
                     });
                     // isomorphic git patch
                     const head = await git.resolveRef({
-                        fs,
                         dir,
                         ref: 'HEAD',
                         depth: 1
@@ -557,7 +555,7 @@ BrowserFSConfigure().then(() => {
                     if (head != ref) {
                         await new Promise((resolve) => fs.writeFile(`${dir}/.git/HEAD`, ref, resolve));
                     }
-                    var HEAD_after = await git.resolveRef({fs, dir, ref: 'HEAD'});
+                    var HEAD_after = await git.resolveRef({dir, ref: 'HEAD'});
                     //console.log(JSON.stringify({HEAD_after, HEAD_before}));
                     if (HEAD_after === HEAD_before) {
                         term.echo('Already up-to-date.');
@@ -576,7 +574,7 @@ BrowserFSConfigure().then(() => {
                             branch
                         ].join(''));
                         output.push('Fast-froward');
-                        const diffs = await gitCommitDiff({fs, dir, oldSha: HEAD_before, newSha: HEAD_after});
+                        const diffs = await gitCommitDiff({dir, oldSha: HEAD_before, newSha: HEAD_after});
                         output.push(diffStat(Object.values(diffs).map(val => val.diff)));
                         term.echo(output.join('\n'));
                     }
@@ -607,7 +605,6 @@ BrowserFSConfigure().then(() => {
                         var dir = await gitroot(cwd);
                         var emitter = messageEmitter(/^Compressing/);
                         await git_wrapper.fetch({
-                            fs,
                             dir,
                             singleBranch: true,
                             ref: cmd.args[0],
@@ -627,8 +624,8 @@ BrowserFSConfigure().then(() => {
                     if (cmd.args.length) {
                         term.pause();
                         var dir = await gitroot(cwd);
-                        await git_wrapper.checkout({fs, dir, ref: cmd.args[0]});
-                        branch = await gitBranch({fs, cwd});
+                        await git_wrapper.checkout({dir, ref: cmd.args[0]});
+                        branch = await gitBranch({cwd});
                     } else {
                         term.echo('to be implemented');
                         /*
@@ -662,18 +659,17 @@ BrowserFSConfigure().then(() => {
                     });
                     try {
                         var dir = await gitroot(cwd);
-                        var url = await repoURL({fs, dir});
-                        var branches = await git.listBranches({fs, dir, remote: 'origin'});
+                        var url = await repoURL({dir});
+                        var branches = await git.listBranches({dir, remote: 'origin'});
                         var output = [`To ${url}`];
                         if (branches.includes(branch)) {
-                            var ref = await git.resolveRef({fs, dir, ref: `refs/remotes/origin/${branch}`});
-                            var HEAD = await git.resolveRef({fs, dir, ref: 'HEAD'});
+                            var ref = await git.resolveRef({dir, ref: `refs/remotes/origin/${branch}`});
+                            var HEAD = await git.resolveRef({dir, ref: 'HEAD'});
                             output.push(`   ${ref.substring(0, 7)}..${HEAD.substring(0, 7)} ${branch} -> ${branch}`);
                         } else {
                             output.push(` * [new branch]      ${branch} -> ${branch}`);
                         }
                         await git_wrapper.push({
-                            fs,
                             dir,
                             ref: branch,
                             authUsername: credentials.username,
@@ -695,9 +691,8 @@ BrowserFSConfigure().then(() => {
                 term.pause();
                 try {
                     async function commit() {
-                        var head = await git.resolveRef({ fs, dir, ref: 'HEAD'});
+                        var head = await git.resolveRef({dir, ref: 'HEAD'});
                         var commit = await git.commit({
-                            fs,
                             dir,
                             author: {
                                 email: credentials.email,
@@ -710,7 +705,7 @@ BrowserFSConfigure().then(() => {
                                 return ` ${label} mode 100644 ${fielpath}`;
                             }).join('\n');
                         }
-                        var diffs = await gitCommitDiff({fs, dir, newSha: commit, oldSha: head});
+                        var diffs = await gitCommitDiff({dir, newSha: commit, oldSha: head});
                         var stat = diffStat(Object.values(diffs).map(value => value.diff));
                         term.echo(`[master ${commit.substring(0, 7)}] ${message}\n${stat}`);
                         term.echo(mod('deleted', 'delete'));
@@ -719,7 +714,7 @@ BrowserFSConfigure().then(() => {
                     var dir = await gitroot(cwd);
                     var all = !!cmd.args.filter(arg => arg.match(/^-.*a/)).length;
                     if (all) {
-                        await gitAddAll({fs, dir, branch});
+                        await gitAddAll({dir, branch});
                     }
                     var message = getOption(/-.*m$/, cmd.args);
                     var name = credentials.fullname || credentials.username;
@@ -742,7 +737,7 @@ BrowserFSConfigure().then(() => {
                                 '#'
                             ]);
                         }
-                        var files = await getAllStats({fs, cwd, branch});
+                        var files = await getAllStats({cwd, branch});
                         var staged = files.filter(([_, stat]) => ['modified', 'deleted', 'added'].includes(stat));
                         var not_staged = files.filter(([_, stat]) => ['*modified', '*deleted'].includes(stat));
                         var new_files = files.filter(([_, stat]) => stat === '*added');
@@ -801,11 +796,11 @@ BrowserFSConfigure().then(() => {
                 var all = !!cmd.args.filter(arg => arg === '.').length;
                 if (all || all_git) {
                     gitroot(cwd).then(dir => {
-                        return gitAddAll({fs, dir, branch, all});
+                        return gitAddAll({dir, branch, all});
                     }).then(term.resume).catch(error);
                 } else if (cmd.args.length > 0) {
                     processGitFiles(cmd.args).then(({files, dir}) => {
-                        return Promise.all(files.map(filepath => git.add({fs, dir, filepath})));
+                        return Promise.all(files.map(filepath => git.add({dir, filepath})));
                     }).then(term.resume).catch(error);
                 } else {
                     term.resume();
@@ -830,9 +825,9 @@ BrowserFSConfigure().then(() => {
                                 } else if (stat) {
                                     var filepath = path_name.replace(re, '');
                                     if (stat.isDirectory()) {
-                                        var promise = git.listDir({fs, dir}).then((list) => {
+                                        var promise = git.listDir({dir}).then((list) => {
                                             var files = list.filter(name => name.startsWith(filepath));
-                                            return Promise.all(files.map(file => git.remove({fs, dir, filepath})));
+                                            return Promise.all(files.map(file => git.remove({dir, filepath})));
                                         }).catch(err => term.error(err));
                                         if (options.match(/r/)) {
                                             if (!long_options.includes(/--cached/)) {
@@ -843,9 +838,9 @@ BrowserFSConfigure().then(() => {
                                         }
                                     } else if (stat.isFile()) {
                                         if (!long_options.includes(/--cached/)) {
-                                            git.remove({fs, dir, filepath}).then(() => fs.unlink(path_name));
+                                            git.remove({dir, filepath}).then(() => fs.unlink(path_name));
                                         } else {
-                                            git.remove({fs, dir, filepath})
+                                            git.remove({dir, filepath})
                                         }
                                     }
                                 } else {
@@ -903,7 +898,7 @@ BrowserFSConfigure().then(() => {
                  *
                  * nothing to commit, working tree clean
                  */
-                getAllStats({fs, cwd, branch}).then((files) => {
+                getAllStats({cwd, branch}).then((files) => {
                     function filter(files, name) {
                         if (name instanceof Array) {
                             return files.filter(([_, status]) => name.includes(status));
@@ -918,7 +913,7 @@ BrowserFSConfigure().then(() => {
                     }
                     var changes = not(files, ['unmodified', 'ignored']);
                     if (!changes.length) {
-                        git.log({fs, dir, depth: 2, ref: branch}).then((commits) => {
+                        git.log({dir, depth: 2, ref: branch}).then((commits) => {
                             term.echo(`On branch ${branch}`);
                             if (commits.length == 2) {
                                 term.echo('nothing to commit, working directory clean\n');
@@ -1029,10 +1024,10 @@ BrowserFSConfigure().then(() => {
                 }
                 gitroot(cwd).then(dir => {
                     if (!cmd.args.length) {
-                        return git.listFiles({dir,fs}).then(files => {
+                        return git.listFiles({dir}).then(files => {
                             return Promise.all(files.map((filepath) => {
                                 try {
-                                    return git.status({fs, dir, filepath}).then(status => {
+                                    return git.status({dir, filepath}).then(status => {
                                         if (['unmodified', 'ignored'].includes(status)) {
                                             return null;
                                         } else {
@@ -1103,7 +1098,7 @@ BrowserFSConfigure().then(() => {
                         output.push(`    ${commit.message}`);
                         return output.join('\n');
                     }
-                    return git.log({fs, dir, depth, ref: branch}).then(commits => {
+                    return git.log({dir, depth, ref: branch}).then(commits => {
                         var text = commits.filter(commit => !commit.error).map(format).join('\n\n');
                         if (text.length - 1 > term.rows()) {
                             term.less(text);
@@ -1174,7 +1169,6 @@ BrowserFSConfigure().then(() => {
                         };
                     }
                     git_wrapper.clone({
-                        fs,
                         dir: repo_dir,
                         url: url,
                         ...auth,
@@ -1624,19 +1618,17 @@ async function rmdir(dir) {
 
 
 // ---------------------------------------------------------------------------------------------------------
-async function listBranchFiles({fs, dir, branch}) {
-    const repo = { fs, dir };
-    const sha = await git.resolveRef({ ...repo, ref: `refs/remotes/origin/${branch}` });
-    const { object: { tree } } = await git.readObject({ ...repo, oid: sha });
+async function listBranchFiles({dir, branch}) {
+    const sha = await git.resolveRef({ dir, ref: `refs/remotes/origin/${branch}` });
+    const { object: { tree } } = await git.readObject({ dir, oid: sha });
     var list = [];
-    return traverseCommit({fs, dir, sha, callback: ({filepath}) => list.push(filepath)}).then(() => list);
+    return traverseCommit({dir, sha, callback: ({filepath}) => list.push(filepath)}).then(() => list);
 }
 // ---------------------------------------------------------------------------------------------------------
-async function traverseCommit({fs, dir, sha, callback = $.noop}) {
-    const repo = {fs, dir};
-    const { object: { tree } } = await git.readObject({ ...repo, oid: sha });
+async function traverseCommit({dir, sha, callback = $.noop}) {
+    const { object: { tree } } = await git.readObject({ dir, oid: sha });
     return await (async function readFiles(oid, path) {
-        const { object: { entries } } = await git.readObject({ ...repo, oid});
+        const { object: { entries } } = await git.readObject({ dir, oid});
         var i = 0;
         return (async function loop() {
             var entry = entries[i++];
@@ -1654,12 +1646,12 @@ async function traverseCommit({fs, dir, sha, callback = $.noop}) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
-async function gitCommitDiff({fs, dir, newSha, oldSha}) {
+async function gitCommitDiff({dir, newSha, oldSha}) {
     var result = {};
     function reader(name) {
         return async ({filepath, oid}) => {
             try {
-                const { object: pkg } = await git.readObject({ fs, dir, oid });
+                const { object: pkg } = await git.readObject({ dir, oid });
                 result[filepath] = result[filepath] || {};
                 result[filepath][name] = pkg.toString('utf8');
             } catch(e) {
@@ -1667,8 +1659,8 @@ async function gitCommitDiff({fs, dir, newSha, oldSha}) {
             }
         };
     }
-    await traverseCommit({fs, dir, sha: oldSha, callback: reader('oldFile')});
-    await traverseCommit({fs, dir, sha: newSha, callback: reader('newFile')});
+    await traverseCommit({dir, sha: oldSha, callback: reader('oldFile')});
+    await traverseCommit({dir, sha: newSha, callback: reader('newFile')});
     Object.keys(result).forEach(key => {
         var diff = JsDiff.structuredPatch(key, key, result[key].oldFile || '', result[key].newFile || '');
         if (typeof result[key].oldFile === 'undefined') {
@@ -1711,22 +1703,22 @@ function diffStat(diffs) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
-async function readBranchFile({ dir, fs, filepath, branch }) {
+async function readBranchFile({ dir, filepath, branch }) {
     const ref = 'refs/remotes/origin/' + branch;
-    const sha = await git.resolveRef({ fs, dir,  ref });
-    const { object: { tree } } = await git.readObject({ fs, dir, oid: sha });
+    const sha = await git.resolveRef({ dir,  ref });
+    const { object: { tree } } = await git.readObject({ dir, oid: sha });
     return (async function loop(tree, path) {
         if (!path.length) {
             throw new Error(`File ${filepath} not found`);
         }
         var name = path.shift();
-        const { object: { entries } } = await git.readObject({ fs, dir, oid: tree });
+        const { object: { entries } } = await git.readObject({ dir, oid: tree });
         const packageEntry = entries.find((entry) => entry.path === name);
         if (!packageEntry) {
             throw new Error(`File ${filepath} not found`);
         } else {
             if (packageEntry.type == 'blob') {
-                const { object: pkg } = await git.readObject({ fs, dir, oid: packageEntry.oid })
+                const { object: pkg } = await git.readObject({ dir, oid: packageEntry.oid })
                 return pkg.toString('utf8');
             } else if (packageEntry.type == 'tree') {
                 return loop(packageEntry.oid, path);
@@ -1761,13 +1753,13 @@ function date(timestamp, timezoneOffset) {
 
 // ---------------------------------------------------------------------------------------------------------
 function gitroot(cwd) {
-    return git.findRoot({fs, filepath: cwd});
+    return git.findRoot({filepath: cwd});
 }
 // ---------------------------------------------------------------------------------------------------------
-async function gitBranch({fs, cwd}) {
+async function gitBranch({cwd}) {
     try {
         var dir = await gitroot(cwd);
-        return git.currentBranch({fs, dir});
+        return git.currentBranch({dir});
     } catch(e) {
     }
 }
@@ -1779,7 +1771,7 @@ function gitDiff({dir, filepath, branch}) {
             if (!err) {
                 newFile = newFile.toString();
             }
-            readBranchFile({fs, dir, branch, filepath}).then(oldFile => {
+            readBranchFile({dir, branch, filepath}).then(oldFile => {
                 const diff = JsDiff.structuredPatch(filepath, filepath, oldFile || '', newFile || '');
                 resolve(diff);
             }).catch(err => reject(err));
@@ -1787,12 +1779,12 @@ function gitDiff({dir, filepath, branch}) {
     });
 }
 // ---------------------------------------------------------------------------------------------------------
-async function gitReset({fs, git, dir, ref, branch, hard = false}) {
+async function gitReset({git, dir, ref, branch, hard = false}) {
     var re = /^HEAD~([0-9]+)$/
     var m = ref.match(re);
     if (m) {
         var count = +m[1];
-        var commits = await git.log({fs, dir, depth: count + 1});
+        var commits = await git.log({dir, depth: count + 1});
         return new Promise((resolve, reject) => {
             if (commits.length < count + 1) {
                 return reject('Not enough commits');
@@ -1811,7 +1803,7 @@ async function gitReset({fs, git, dir, ref, branch, hard = false}) {
                             return reject(err);
                         }
                         // checkout the branch into the working tree
-                        git.checkout({ dir, fs, ref: branch }).then(resolve);
+                        git.checkout({ dir, ref: branch }).then(resolve);
                     });
                 }
             });
@@ -1821,22 +1813,22 @@ async function gitReset({fs, git, dir, ref, branch, hard = false}) {
 }
 
 // ---------------------------------------------------------------------------------------------------------
-function gitURL({fs, dir, gitdir = path.join(dir, '.git'), remote = 'origin'}) {
-    return git.config({fs, gitdir, path: `remote.${remote}.url`});
+function gitURL({dir, gitdir = path.join(dir, '.git'), remote = 'origin'}) {
+    return git.config({gitdir, path: `remote.${remote}.url`});
 }
 
 // ---------------------------------------------------------------------------------------------------------
-async function repoURL({fs, dir, gitdir = path.join(dir, '.git'), remote = 'origin'}) {
-    var url = await gitURL({fs, dir, gitdir, remote});
+async function repoURL({dir, gitdir = path.join(dir, '.git'), remote = 'origin'}) {
+    var url = await gitURL({dir, gitdir, remote});
     return url.replace(/^https:\/\/jcubic.pl\/proxy.php\?/, '');
 }
 
 // ---------------------------------------------------------------------------------------------------------
 function getHEAD({dir, gitdir, remote = false}) {
     if (!remote) {
-        return git.resolveRef({fs, dir, ref: 'HEAD'});
+        return git.resolveRef({dir, ref: 'HEAD'});
     } else {
-        //return git.resolveRef({fs, dir: 'test', ref: 'refs/remotes/origin/HEAD'});
+        //return git.resolveRef({dir: 'test', ref: 'refs/remotes/origin/HEAD'});
     }
     return new Promise((resolve, reject) => {
         var base = `${dir}/${gitdir || '.git'}/`;
