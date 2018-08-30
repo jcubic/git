@@ -130,7 +130,10 @@ BrowserFSConfigure().then(() => {
     var branch;
 
     var credentialManager = {
-        async fill ({host, protocol, path}) {
+        async fill ({ url }) {
+            // Remove proxy if necessary
+            url = url.replace('https://jcubic.pl/proxy.php?', '');
+            let {host} = new URL(url);
             var questions = [];
             if (!credentials.username) {
                 questions.push({name: 'username'})
@@ -173,13 +176,13 @@ BrowserFSConfigure().then(() => {
                 })();
             })
         },
-        async rejected ({host, protocol, path, auth}) {
+        async rejected ({url, auth}) {
             if (auth.username === credentials.username && auth.password === credentials.password) {
                 credentials.username = null
                 credentials.password = null
             }
         },
-        async approved ({host, protocol, path, auth}) {
+        async approved ({url, auth}) {
             // TODO: don't save to localstorage until it works?
         }
     }
