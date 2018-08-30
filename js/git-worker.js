@@ -42,9 +42,9 @@ const urlify = (protocol, host, path) => `${protocol}://${host}/${path || ''}`;
             let url = urlify(protocol, host, path);
             let auth = await localStorage.getItem(url);
             if (auth) return JSON.parse(auth);
-            const username = await term.read(`Enter username for ${host} `);
+            const username = await term.read(`Enter username for ${host}: `);
             await term.set_mask(true);
-            const password = await termread('Enter password');
+            const password = await term.read('Enter password: ');
             await term.set_mask(false);
             return {
                 username,
@@ -57,6 +57,9 @@ const urlify = (protocol, host, path) => `${protocol}://${host}/${path || ''}`;
             if (response) {
                 await localStorage.setItem(url, JSON.stringify(auth));
             }
+            if (this.paused) {
+                await term.pause();
+            }
         },
         async rejected({ protocol, host, path, auth }) {
             let url = urlify(protocol, host, path);
@@ -68,7 +71,7 @@ const urlify = (protocol, host, path) => `${protocol}://${host}/${path || ''}`;
         }
     };
 
-    git.plugins.set('credentialManager', CredentialManager);
+    
 
 self.addEventListener('message', ({ data }) => {
     BrowserFS.configure({
@@ -79,7 +82,8 @@ self.addEventListener('message', ({ data }) => {
         }
     }, function (err) {
         self.fs = BrowserFS.BFSRequire('fs');
-        git.plugins.set('fs', self.fs)
+        git.plugins.set('fs', self.fs);
+        git.plugins.set('credentialManager', CredentialManager);
         let id = data.id;
         if (data.type !== 'RPC' || id === null) {
             return;

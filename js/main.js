@@ -114,6 +114,8 @@ BrowserFSConfigure().then(() => {
                             } else {
                                 response(data.id, data.method, result);
                             }
+                        } else {
+                            response(data.id, data.method);
                         }
                     }
                 }
@@ -712,13 +714,18 @@ BrowserFSConfigure().then(() => {
                         } else {
                             output.push(` * [new branch]      ${branch} -> ${branch}`);
                         }
-                        await git_wrapper.push({
-                            dir,
-                            ref: branch,
-                            //authUsername: credentials.username,
-                            //authPassword: credentials.password,
-                            emitter
-                        });
+                        try {
+                            await git_wrapper.push({
+                                dir,
+                                corsProxy: 'https://jcubic.pl/proxy.php?',
+                                ref: branch,
+                                //authUsername: credentials.username,
+                                //authPassword: credentials.password,
+                                emitter
+                            });
+                        } catch(e) {
+                            console.log(e);
+                        }
                         term.echo(output.join('\n'));
                     } catch (e) {
                         term.error(e.message || e);
