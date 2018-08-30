@@ -8,7 +8,7 @@
  * Released under the MIT license
  *
  */
- 
+
 var banner = [
     '  ____ ___ _____ ',
     ' / ___|_ _|_   _| __      __   _      _____              _           _',
@@ -42,7 +42,7 @@ function BrowserFSConfigure() {
         });
     });
 }
- 
+
 BrowserFSConfigure().then(() => {
     var name = 'git'; // terminal name for history
     window.fs = BrowserFS.BFSRequire('fs');
@@ -53,6 +53,22 @@ BrowserFSConfigure().then(() => {
         zip.workerScriptsPath = location.pathname.replace(/\/[^\/]+$/, '/') + 'js/zip/';
     }
     var scope = location.pathname.replace(/\/[^\/]+$/, '/');
+
+    $.fn.confirm = async function(message) {
+        var term = $(this).terminal();
+        const response = await new Promise(function(resolve) {
+            term.push(function(command) {
+                if (command.match(/Y(es)?/i)) {
+                    resolve(true);
+                } else if (command.match(/N(o)?/i)) {
+                    resolve(false);
+                }
+            }, {
+                prompt: message
+            });
+        });
+        term.pop();
+    };
     if ('serviceWorker' in navigator) {
         // loading this repo from browerFS will not work because serviceWorker can't be loaded from
         // serivice worker.
@@ -76,6 +92,33 @@ BrowserFSConfigure().then(() => {
     if (typeof Worker !== 'undefined') {
         var worker = new Worker(scope + 'js/git-worker.js');
         let count = 0;
+        worker.addEventListener("message", function handler({ data }) {
+            function response(id, method, result) {
+                worker.postMessage({ type: "RPC", method, object: data.object, id, result});
+            }
+            if (data.type === 'RPC') {
+                var object;
+                if (data.object === 'terminal') {
+                    object = term;
+                } else if (data.object === 'localStorage') {
+                    object = localStorage;
+                }
+                if (object) {
+                    if (typeof object[data.method] === 'function') {
+                        var result = object[data.method].apply(object, data.args || []);
+                        if (result !== object) {
+                            if (result && typeof result.then === 'function') {
+                                result.then(function(result) {
+                                    response(data.id, data.method, result);
+                                });
+                            } else {
+                                response(data.id, data.method, result);
+                            }
+                        }
+                    }
+                }
+            }
+        });
         Object.getOwnPropertyNames(git).forEach(function(name) {
             var emitter_handler = null;
             if (typeof git[name] === 'function') {
@@ -651,7 +694,7 @@ BrowserFSConfigure().then(() => {
                  */
             },
             push: async function(cmd) {
-                if (credentials.username && credentials.password) {
+                if (true || credentials.username && credentials.password) {
                     term.pause();
                     var emitter = new EventEmitter();
                     emitter.on('message', (message) => {
@@ -672,8 +715,8 @@ BrowserFSConfigure().then(() => {
                         await git_wrapper.push({
                             dir,
                             ref: branch,
-                            authUsername: credentials.username,
-                            authPassword: credentials.password,
+                            //authUsername: credentials.username,
+                            //authPassword: credentials.password,
                             emitter
                         });
                         term.echo(output.join('\n'));
