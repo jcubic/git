@@ -128,6 +128,66 @@ BrowserFSConfigure().then(() => {
         }
     });
     var branch;
+
+    var credentialManager = {
+        async fill ({ url }) {
+            // Remove proxy if necessary
+            url = url.replace('https://jcubic.pl/proxy.php?', '');
+            let {host} = new URL(url);
+            var questions = [];
+            if (!credentials.username) {
+                questions.push({name: 'username'})
+            }
+            if (!credentials.password) {
+                questions.push({name: 'password', mask: true})
+            }
+            term.echo('Authenticate to ' + host);
+            var history = term.history();
+            history.disable();
+            var ispaused = term.paused();
+            return new Promise((resolve, reject) => {
+                (function loop() {
+                    var question = questions.shift();
+                    if (!question) {
+                        history.enable();
+                        if (ispaused) term.pause()
+                        resolve({
+                            username: credentials.username,
+                            password: credentials.password
+                        })
+                    } else {
+                        var name = question.name;
+                        if (term.paused()) term.resume();
+                        term.push(answer => {
+                            credentials[name] = answer;
+                            if (!question.mask) {
+                                localStorage.setItem('git_' + name, answer);
+                            }
+                            term.pop();
+                            loop();
+                        }, {
+                            prompt: name + ': ',
+                            name: 'read'
+                        }).set_mask(!!question.mask);
+                        if (!question.mask) {
+                            term.insert(localStorage.getItem('git_' + name) || '');
+                        }
+                    }
+                })();
+            })
+        },
+        async rejected ({url, auth}) {
+            if (auth.username === credentials.username && auth.password === credentials.password) {
+                credentials.username = null
+                credentials.password = null
+            }
+        },
+        async approved ({url, auth}) {
+            // TODO: don't save to localstorage until it works?
+        }
+    }
+    git.plugins.set('credentialManager', credentialManager);
+
     // -----------------------------------------------------------------------------------------------------
     // :: resolve path
     // -----------------------------------------------------------------------------------------------------
@@ -528,11 +588,6 @@ BrowserFSConfigure().then(() => {
                     var HEAD_before = await git.resolveRef({dir, ref: 'HEAD'});
                     var url = await repoURL({dir});
                     var output = [];
-                    var auth = {};
-                    if (credentials.password && credentials.username) {
-                        auth.authUsername = credentials.username;
-                        auth.authPassword = credentials.password;
-                    }
                     var ref = await git.resolveRef({
                         dir,
                         ref: 'HEAD',
@@ -542,7 +597,6 @@ BrowserFSConfigure().then(() => {
                         dir,
                         singleBranch: true,
                         fastForwardOnly: true,
-                        ...auth,
                         emitter: messageEmitter(/^Compressing/)
                     });
                     // isomorphic git patch
@@ -651,39 +705,33 @@ BrowserFSConfigure().then(() => {
                  */
             },
             push: async function(cmd) {
-                if (credentials.username && credentials.password) {
-                    term.pause();
-                    var emitter = new EventEmitter();
-                    emitter.on('message', (message) => {
-                        term.echo(message);
-                    });
-                    try {
-                        var dir = await gitroot(cwd);
-                        var url = await repoURL({dir});
-                        var branches = await git.listBranches({dir, remote: 'origin'});
-                        var output = [`To ${url}`];
-                        if (branches.includes(branch)) {
-                            var ref = await git.resolveRef({dir, ref: `refs/remotes/origin/${branch}`});
-                            var HEAD = await git.resolveRef({dir, ref: 'HEAD'});
-                            output.push(`   ${ref.substring(0, 7)}..${HEAD.substring(0, 7)} ${branch} -> ${branch}`);
-                        } else {
-                            output.push(` * [new branch]      ${branch} -> ${branch}`);
-                        }
-                        await git_wrapper.push({
-                            dir,
-                            ref: branch,
-                            authUsername: credentials.username,
-                            authPassword: credentials.password,
-                            emitter
-                        });
-                        term.echo(output.join('\n'));
-                    } catch (e) {
-                        term.error(e.message || e);
-                    } finally {
-                        term.resume();
+                term.pause();
+                var emitter = new EventEmitter();
+                emitter.on('message', (message) => {
+                    term.echo(message);
+                });
+                try {
+                    var dir = await gitroot(cwd);
+                    var url = await repoURL({dir});
+                    var branches = await git.listBranches({dir, remote: 'origin'});
+                    var output = [`To ${url}`];
+                    if (branches.includes(branch)) {
+                        var ref = await git.resolveRef({dir, ref: `refs/remotes/origin/${branch}`});
+                        var HEAD = await git.resolveRef({dir, ref: 'HEAD'});
+                        output.push(`   ${ref.substring(0, 7)}..${HEAD.substring(0, 7)} ${branch} -> ${branch}`);
+                    } else {
+                        output.push(` * [new branch]      ${branch} -> ${branch}`);
                     }
-                } else {
-                    term.error('You need to call `git login` to set username and password before push');
+                    await git.push({
+                        dir,
+                        ref: branch,
+                        emitter
+                    });
+                    term.echo(output.join('\n'));
+                } catch (e) {
+                    term.error(e.message || e);
+                } finally {
+                    term.resume();
                 }
             },
             commit: async function(cmd) {
@@ -1125,7 +1173,7 @@ BrowserFSConfigure().then(() => {
                     long = String(arg).match(re);
                 });
                 var depth = getOption(/^--depth/, cmd.args);
-                var url = 'https://jcubic.pl/proxy.php?' + args[0];
+                var url = args[0];
                 re = /\/([^\/]+?)(\.git)?$/;
                 var repo_dir = path.join(cwd, (args.length === 2 ? args[1] : args[0].match(re)[1]));
                 fs.stat(repo_dir, function(err, stat) {
@@ -1168,9 +1216,10 @@ BrowserFSConfigure().then(() => {
                             authPassword: credentials.password
                         };
                     }
-                    git_wrapper.clone({
+                    git.clone({
                         dir: repo_dir,
                         url: url,
+                        corsProxy: 'https://jcubic.pl/proxy.php?',
                         ...auth,
                         depth: depth ? +depth : undefined,
                         singleBranch: true,
