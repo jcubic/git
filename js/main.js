@@ -68,6 +68,7 @@ BrowserFSConfigure().then(() => {
             });
         });
         term.pop();
+        return response;
     };
     if ('serviceWorker' in navigator) {
         // loading this repo from browerFS will not work because serviceWorker can't be loaded from
@@ -1175,7 +1176,7 @@ BrowserFSConfigure().then(() => {
                     long = String(arg).match(re);
                 });
                 var depth = getOption(/^--depth/, cmd.args);
-                var url = 'https://jcubic.pl/proxy.php?' + args[0];
+                var url = args[0];
                 re = /\/([^\/]+?)(\.git)?$/;
                 var repo_dir = path.join(cwd, (args.length === 2 ? args[1] : args[0].match(re)[1]));
                 fs.stat(repo_dir, function(err, stat) {
@@ -1220,6 +1221,7 @@ BrowserFSConfigure().then(() => {
                     }
                     git_wrapper.clone({
                         dir: repo_dir,
+                        corsProxy: 'https://jcubic.pl/proxy.php?',
                         url: url,
                         ...auth,
                         depth: depth ? +depth : undefined,
