@@ -365,7 +365,7 @@ BrowserFSConfigure().then(() => {
                 if (fname.match(/^\//)) {
                     path = fname;
                 } else {
-                    path = (cwd === '/' ? '' : cmd) + '/' + fname;
+                    path = (cwd === '/' ? '' : cwd) + '/' + fname;
                 }
                 function open(file) {
                     // we need to replace < and & because jsvi is handling html tags
