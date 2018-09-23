@@ -8,7 +8,7 @@
  * Released under the MIT license
  *
  */
- 
+
 var banner = [
     '  ____ ___ _____ ',
     ' / ___|_ _|_   _| __      __   _      _____              _           _',
@@ -42,7 +42,7 @@ function BrowserFSConfigure() {
         });
     });
 }
- 
+
 BrowserFSConfigure().then(() => {
     var name = 'git'; // terminal name for history
     window.fs = BrowserFS.BFSRequire('fs');
@@ -368,13 +368,12 @@ BrowserFSConfigure().then(() => {
                     path = (cwd === '/' ? '' : cwd) + '/' + fname;
                 }
                 function open(file) {
-                    // we need to replace < and & because jsvi is handling html tags
-                    // and don't work properly for raw text
-                    textarea.val(file.replace(/</g, '&lt;').replace(/&/g, '&amp;'));
+                    textarea.val(file);
                     editor = window.editor = vi(textarea[0], {
                         color: '#ccc',
                         backgroundColor: '#000',
                         onSave: function() {
+                            // we need to replace < and & because jsvi is converting them to entities
                             var file = textarea.val().replace(/&amp;/g, '&').replace(/&lt;/g, '<');
                             fs.writeFile(path, file, function(err, wr) {
                                 if (err) {
