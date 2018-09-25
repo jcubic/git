@@ -155,14 +155,23 @@ BrowserFSConfigure().then(() => {
     // -----------------------------------------------------------------------------------------------------
     function messageEmitter(re) {
         var emitter = new EventEmitter();
-        var first;
+        var first = {};
+        function match(message) {
+            if (re instanceof RegExp) {
+                return message.match(re);
+            } else if (re instanceof Array) {
+                return re.filter(re => message.match(re))[0];
+            }
+            return false;
+        }
         emitter.on('message', (message) => {
-            if (re && message.match(re)) {
-                if (typeof first === 'undefined') {
+            var m = match(message);
+            if (m) {
+                if (typeof first[m[0]] == 'undefined') {
                     term.echo(message);
-                    first = term.last_index();
+                    first[m[0]] = term.last_index();
                 } else {
-                    term.update(first, message);
+                    term.update(first[m[0]], message);
                 }
             } else {
                 term.echo(message);
@@ -542,7 +551,7 @@ BrowserFSConfigure().then(() => {
                         singleBranch: true,
                         fastForwardOnly: true,
                         ...auth,
-                        emitter: messageEmitter(/^Compressing/)
+                        emitter: messageEmitter([/^Compressing/, /^Counting/])
                     });
                     // isomorphic git patch
                     const head = await git.resolveRef({
@@ -1696,7 +1705,7 @@ function diffStat(diffs) {
         stat.push(`${modifications.plus} insertion${plural(modifications.plus)}(+)`);
     }
     if (modifications.minus) {
-        stat.push(`${modifications.minus} insertion${plural(modifications.minus)}(-)`);
+        stat.push(`${modifications.minus} deletion${plural(modifications.minus)}(-)`);
     }
     return stat.join(', ');
 }
