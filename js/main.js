@@ -199,16 +199,18 @@ BrowserFSConfigure().then(() => {
         }
     }
     // -----------------------------------------------------------------------------------------------------
-    function messageEmitter(re) {
+    function messageEmitter() {
         var emitter = new EventEmitter();
-        var first;
+        var first = {};
+        var re = /^([^:]+):\s+[0-9]+%?/;
         emitter.on('message', (message) => {
-            if (re && message.match(re)) {
-                if (typeof first === 'undefined') {
+            var m = message.match(re);
+            if (m) {
+                if (typeof first[m[1]] == 'undefined') {
                     term.echo(message);
-                    first = term.last_index();
+                    first[m[1]] = term.last_index();
                 } else {
-                    term.update(first, message);
+                    term.update(first[m[1]], message);
                 }
             } else {
                 term.echo(message);
@@ -589,7 +591,7 @@ BrowserFSConfigure().then(() => {
                         singleBranch: true,
                         fastForwardOnly: true,
                         ...auth,
-                        emitter: messageEmitter(/^Compressing/)
+                        emitter: messageEmitter()
                     });
                     // isomorphic git patch
                     const head = await git.resolveRef({
@@ -649,7 +651,7 @@ BrowserFSConfigure().then(() => {
                     if (cmd.args.length) {
                         term.pause();
                         var dir = await gitroot(cwd);
-                        var emitter = messageEmitter(/^Compressing/);
+                        var emitter = messageEmitter();
                         await git_wrapper.fetch({
                             dir,
                             singleBranch: true,
@@ -1749,7 +1751,7 @@ function diffStat(diffs) {
         stat.push(`${modifications.plus} insertion${plural(modifications.plus)}(+)`);
     }
     if (modifications.minus) {
-        stat.push(`${modifications.minus} insertion${plural(modifications.minus)}(-)`);
+        stat.push(`${modifications.minus} deletion${plural(modifications.minus)}(-)`);
     }
     return stat.join(', ');
 }
