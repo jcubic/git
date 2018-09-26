@@ -700,10 +700,7 @@ BrowserFSConfigure().then(() => {
             push: async function(cmd) {
                 if (true || credentials.username && credentials.password) {
                     term.pause();
-                    var emitter = new EventEmitter();
-                    emitter.on('message', (message) => {
-                        term.echo(message);
-                    });
+                    var emitter = messageEmitter();
                     try {
                         var dir = await gitroot(cwd);
                         var url = await repoURL({dir});
@@ -1197,20 +1194,6 @@ BrowserFSConfigure().then(() => {
                         }
                     }
                 });
-                var emitter = new EventEmitter();
-                var index = null;
-                emitter.on('message', (message) => {
-                    if (message.match(/Compressing/)) {
-                        if (index === null) {
-                            term.echo(message);
-                            index = term.last_index();
-                        } else {
-                            term.update(index, message);
-                        }
-                    } else {
-                        term.echo(message);
-                    }
-                });
                 function clone() {
                     term.echo(`Cloning into '${repo_dir}'...`);
                     var auth = {};
@@ -1227,7 +1210,7 @@ BrowserFSConfigure().then(() => {
                         ...auth,
                         depth: depth ? +depth : undefined,
                         singleBranch: true,
-                        emitter: emitter
+                        emitter: new messageEmitter()
                     }).then(term.resume).catch(error);
                 }
             }
