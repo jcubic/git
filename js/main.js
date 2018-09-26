@@ -53,6 +53,23 @@ BrowserFSConfigure().then(() => {
         zip.workerScriptsPath = location.pathname.replace(/\/[^\/]+$/, '/') + 'js/zip/';
     }
     var scope = location.pathname.replace(/\/[^\/]+$/, '/');
+
+    $.fn.confirm = async function(message) {
+        var term = $(this).terminal();
+        const response = await new Promise(function(resolve) {
+            term.push(function(command) {
+                if (command.match(/Y(es)?/i)) {
+                    resolve(true);
+                } else if (command.match(/N(o)?/i)) {
+                    resolve(false);
+                }
+            }, {
+                prompt: message
+            });
+        });
+        term.pop();
+        return response;
+    };
     if ('serviceWorker' in navigator) {
         // loading this repo from browerFS will not work because serviceWorker can't be loaded from
         // serivice worker.
@@ -76,6 +93,35 @@ BrowserFSConfigure().then(() => {
     if (typeof Worker !== 'undefined') {
         var worker = new Worker(scope + 'js/git-worker.js');
         let count = 0;
+        worker.addEventListener("message", function handler({ data }) {
+            function response(id, method, result) {
+                worker.postMessage({ type: "RPC", method, object: data.object, id, result});
+            }
+            if (data.type === 'RPC') {
+                var object;
+                if (data.object === 'terminal') {
+                    object = term;
+                } else if (data.object === 'localStorage') {
+                    object = localStorage;
+                }
+                if (object) {
+                    if (typeof object[data.method] === 'function') {
+                        var result = object[data.method].apply(object, data.args || []);
+                        if (result !== object) {
+                            if (result && typeof result.then === 'function') {
+                                result.then(function(result) {
+                                    response(data.id, data.method, result);
+                                });
+                            } else {
+                                response(data.id, data.method, result);
+                            }
+                        } else {
+                            response(data.id, data.method);
+                        }
+                    }
+                }
+            }
+        });
         Object.getOwnPropertyNames(git).forEach(function(name) {
             var emitter_handler = null;
             if (typeof git[name] === 'function') {
@@ -153,25 +199,18 @@ BrowserFSConfigure().then(() => {
         }
     }
     // -----------------------------------------------------------------------------------------------------
-    function messageEmitter(re) {
+    function messageEmitter() {
         var emitter = new EventEmitter();
         var first = {};
-        function match(message) {
-            if (re instanceof RegExp) {
-                return message.match(re);
-            } else if (re instanceof Array) {
-                return re.filter(re => message.match(re))[0];
-            }
-            return false;
-        }
+        var re = /^([^:]+):\s+[0-9]+%?/;
         emitter.on('message', (message) => {
-            var m = match(message);
+            var m = message.match(re);
             if (m) {
-                if (typeof first[m[0]] == 'undefined') {
+                if (typeof first[m[1]] == 'undefined') {
                     term.echo(message);
-                    first[m[0]] = term.last_index();
+                    first[m[1]] = term.last_index();
                 } else {
-                    term.update(first[m[0]], message);
+                    term.update(first[m[1]], message);
                 }
             } else {
                 term.echo(message);
@@ -551,7 +590,7 @@ BrowserFSConfigure().then(() => {
                         singleBranch: true,
                         fastForwardOnly: true,
                         ...auth,
-                        emitter: messageEmitter([/^Compressing/, /^Counting/])
+                        emitter: messageEmitter()
                     });
                     // isomorphic git patch
                     const head = await git.resolveRef({
@@ -611,7 +650,7 @@ BrowserFSConfigure().then(() => {
                     if (cmd.args.length) {
                         term.pause();
                         var dir = await gitroot(cwd);
-                        var emitter = messageEmitter(/^Compressing/);
+                        var emitter = messageEmitter();
                         await git_wrapper.fetch({
                             dir,
                             singleBranch: true,
@@ -659,7 +698,7 @@ BrowserFSConfigure().then(() => {
                  */
             },
             push: async function(cmd) {
-                if (credentials.username && credentials.password) {
+                if (true || credentials.username && credentials.password) {
                     term.pause();
                     var emitter = new EventEmitter();
                     emitter.on('message', (message) => {
@@ -677,13 +716,18 @@ BrowserFSConfigure().then(() => {
                         } else {
                             output.push(` * [new branch]      ${branch} -> ${branch}`);
                         }
-                        await git_wrapper.push({
-                            dir,
-                            ref: branch,
-                            authUsername: credentials.username,
-                            authPassword: credentials.password,
-                            emitter
-                        });
+                        try {
+                            await git_wrapper.push({
+                                dir,
+                                corsProxy: 'https://jcubic.pl/proxy.php?',
+                                ref: branch,
+                                //authUsername: credentials.username,
+                                //authPassword: credentials.password,
+                                emitter
+                            });
+                        } catch(e) {
+                            console.log(e);
+                        }
                         term.echo(output.join('\n'));
                     } catch (e) {
                         term.error(e.message || e);
@@ -1133,7 +1177,7 @@ BrowserFSConfigure().then(() => {
                     long = String(arg).match(re);
                 });
                 var depth = getOption(/^--depth/, cmd.args);
-                var url = 'https://jcubic.pl/proxy.php?' + args[0];
+                var url = args[0];
                 re = /\/([^\/]+?)(\.git)?$/;
                 var repo_dir = path.join(cwd, (args.length === 2 ? args[1] : args[0].match(re)[1]));
                 fs.stat(repo_dir, function(err, stat) {
@@ -1178,6 +1222,7 @@ BrowserFSConfigure().then(() => {
                     }
                     git_wrapper.clone({
                         dir: repo_dir,
+                        corsProxy: 'https://jcubic.pl/proxy.php?',
                         url: url,
                         ...auth,
                         depth: depth ? +depth : undefined,
