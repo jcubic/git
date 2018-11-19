@@ -1095,7 +1095,7 @@ BrowserFS.configure({ fs: 'IndexedDB', options: {} }, function (err) {
             term.prop({scrollTop: self.prop('scrollHeight')});
         },
         keyup: function() {
-            if (typoef scrollTop !== 'undefined') {
+            if (typeof scrollTop !== 'undefined') {
                 setTimeout(() => term.scrollTop(scrollTop), 0);
             }
         },
