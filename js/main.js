@@ -1250,7 +1250,7 @@ BrowserFSConfigure().then(() => {
             term.echo('List of Git commands: ' + Object.keys(term.commands.git).join(', '), {keepWords: true});
             term.echo([
                 '',
-                'to use git you first need to clone the repo (by default it creates shallow clone with --depth 2),',
+                'to use git you first need to clone the repo (use --depth to speed up cloning of big repos),',
                 'then you can made changes using [[;#fff;]vi] or [[;#fff;]emacs], use [[;#fff;]git add] and then ' +
                 '[[;#fff;]git commit].',
                 '',

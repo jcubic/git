@@ -87,11 +87,7 @@ const CredentialManager = {
 
 self.addEventListener('message', ({ data }) => {
     BrowserFS.configure({
-      fs: 'MountableFileSystem',
-      options: {
-            '/': { fs: 'IndexedDB', options: {}},
-            '/tmp': { fs: 'InMemory' }
-        }
+        fs: 'IndexedDB', options: {}
     }, function (err) {
         self.fs = BrowserFS.BFSRequire('fs');
         git.plugins.set('fs', self.fs);
