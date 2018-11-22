@@ -1246,8 +1246,8 @@ BrowserFSConfigure().then(() => {
             term.echo(lines.join('\n') + '\n');
         },
         help: function() {
-            term.echo('\nList of commands: ' + Object.keys(commands).join(', '), {keepWords: true});
-            term.echo('List of Git commands: ' + Object.keys(commands.git).join(', '), {keepWords: true});
+            term.echo('\nList of commands: ' + Object.keys(term.commands).join(', '), {keepWords: true});
+            term.echo('List of Git commands: ' + Object.keys(term.commands.git).join(', '), {keepWords: true});
             term.echo([
                 '',
                 'to use git you first need to clone the repo (by default it creates shallow clone with --depth 2),',
@@ -1370,7 +1370,6 @@ BrowserFSConfigure().then(() => {
                 return list.map((dir) => dir + '/');
             }
             if (cmd.name !== string) {
-                var dirs = processAssets(content => prepend(trailing(content.dirs)));
                 switch (cmd.name) {
                     // complete file and directories
                     case 'rm':
@@ -1378,11 +1377,13 @@ BrowserFSConfigure().then(() => {
                     case 'vi':
                     case 'less':
                     case 'emacs':
-                        return processAssets(content => cb(prepend(trailing(content.dirs).concat(content.files))));
+                        processAssets(content => cb(prepend(trailing(content.dirs).concat(content.files))));
+                        break;
                     // complete directories
                     case 'ls':
                     case 'cd':
-                        return dirs(cb);
+                        processAssets(content => cb(prepend(trailing(content.dirs))));
+                        break;
                     default:
                         if (term.completion[cmd.name]) {
                             processAssets(content => {
@@ -1597,8 +1598,10 @@ function listDir(path) {
             }
             dirList.forEach(function(filename) {
                 var file = (path === '/' ? '' : path) + '/' + filename;
-
                 fs.stat(file, function(err, stat) {
+                    if (err) {
+                        throw new Error(err);
+                    }
                     if (stat) {
                         result[stat.isFile() ? 'files' : 'dirs'].push(filename);
                     }

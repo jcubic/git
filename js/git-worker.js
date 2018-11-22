@@ -7,8 +7,11 @@ importScripts(
     "https://rawgit.com/Olical/EventEmitter/master/EventEmitter.js"
 );
 
-const localStorage = wrap('localStorage', ['getItem', 'setItem', 'removeItem']);
-
+const localStorage = self.localStorage = wrap('localStorage', [
+    'getItem',
+    'setItem',
+    'removeItem'
+]);
 function wrap(name, names) {
     const obj = {};
     var id = 0;
