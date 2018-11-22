@@ -8,8 +8,10 @@
  * Released under the MIT license
  *
  */
-
-var banner = [
+var term = {
+    completion: {}
+};
+term.banner = [
     '  ____ ___ _____ ',
     ' / ___|_ _|_   _| __      __   _      _____              _           _',
     '| |  _ | |  | |   \\ \\    / /__| |__  |_   _|__ _ _ _ __ (_)_ _  __ _| |',
@@ -17,7 +19,12 @@ var banner = [
     ' \\____|___| |_|     \\_/\\_/\\___|_.__/   |_|\\___|_| |_|_|_|_|_||_\\__,_|_|'
 ];
 function greetings() {
-    var title = this.cols() > banner[1].length ? banner.join('\n') : 'GIT Web Terminal';
+    var title;
+    if (this.cols() > term.banner[1].length) {
+        title = term.banner.join('\n');
+    } else {
+        title = 'GIT Web Terminal';
+    }
     return title + '\n\n' + 'use [[;#fff;]help] to see the available commands' +
            ' or [[;#fff;]credits] to list the projects used\n';
 }
@@ -89,7 +96,7 @@ BrowserFSConfigure().then(() => {
                      });
         }
     }
-    var git_wrapper = {};
+    var git_wrapper = term.git = {};
     if (typeof Worker !== 'undefined') {
         var worker = new Worker(scope + 'js/git-worker.js');
         let count = 0;
@@ -100,7 +107,7 @@ BrowserFSConfigure().then(() => {
             if (data.type === 'RPC') {
                 var object;
                 if (data.object === 'terminal') {
-                    object = term;
+                    object = terminal;
                 } else if (data.object === 'localStorage') {
                     object = localStorage;
                 }
@@ -331,7 +338,7 @@ BrowserFSConfigure().then(() => {
         });
     }
     const error = (e) => term.error(e.message || e).resume();
-    var commands = {
+    term.commands = {
         mkdir: function(cmd) {
             if (cmd.args.length > 0) {
                 var options = [];
@@ -1320,10 +1327,10 @@ BrowserFSConfigure().then(() => {
 
         return view;
     })();
-    var term = $('.term').terminal(function(command, term) {
+    var instance = $('.term').terminal(function(command, term) {
         var cmd = $.terminal.split_command(command);
-        if (commands[cmd.name]) {
-            var action = commands[cmd.name];
+        if (term.commands[cmd.name]) {
+            var action = term.commands[cmd.name];
             var args = cmd.args.slice();
             while (true) {
                 if (typeof action == 'object' && args.length) {
@@ -1349,7 +1356,7 @@ BrowserFSConfigure().then(() => {
             var cmd = $.terminal.parse_command(this.before_cursor());
             function processAssets(callback) {
                 var dir = get_path(string);
-                list('/' + dir.join('/')).then(callback);
+                return list('/' + dir.join('/')).then(callback);
             }
             function prepend(list) {
                 if (string.match(/\//)) {
@@ -1363,6 +1370,7 @@ BrowserFSConfigure().then(() => {
                 return list.map((dir) => dir + '/');
             }
             if (cmd.name !== string) {
+                var dirs = processAssets(content => prepend(trailing(content.dirs)));
                 switch (cmd.name) {
                     // complete file and directories
                     case 'rm':
@@ -1374,11 +1382,23 @@ BrowserFSConfigure().then(() => {
                     // complete directories
                     case 'ls':
                     case 'cd':
-                        return processAssets(content => cb(prepend(trailing(content.dirs))));
+                        return dirs(cb);
+                    default:
+                        if (term.completion[cmd.name]) {
+                            processAssets(content => {
+                                term.completion[cmd.name].call(
+                                    term,
+                                    string,
+                                    cb,
+                                    content.files,
+                                    prepend(trailing(content.dirs))
+                                );
+                            });
+                        }
                 }
             }
             if (cmd.args.length) {
-                var command = commands[cmd.name];
+                var command = term.commands[cmd.name];
                 if (command) {
                     var args = cmd.args.slice();
                     while (true) {
@@ -1393,7 +1413,7 @@ BrowserFSConfigure().then(() => {
                     }
                 }
             } else {
-                cb(Object.keys(commands));
+                cb(Object.keys(term.commands));
             }
         },
         greetings: false,
@@ -1410,6 +1430,7 @@ BrowserFSConfigure().then(() => {
             ].join(''));
         }
     }).echo(greetings);
+    term = $.extend(instance, term);
 });
 
 // ---------------------------------------------------------------------------------------------------------
