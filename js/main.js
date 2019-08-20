@@ -107,7 +107,7 @@ BrowserFSConfigure().then(() => {
             if (data.type === 'RPC') {
                 var object;
                 if (data.object === 'terminal') {
-                    object = terminal;
+                    object = instance;
                 } else if (data.object === 'localStorage') {
                     object = localStorage;
                 }
@@ -163,7 +163,7 @@ BrowserFSConfigure().then(() => {
                         });
                         worker.postMessage({ type: "RPC", method: name, id, params: args});
                     });
-                }
+                };
             }
         });
     } else {
@@ -1623,7 +1623,7 @@ function union(x, y) {
      obj[x[i]] = x[i];
   for (var i = y.length-1; i >= 0; -- i)
      obj[y[i]] = y[i];
-  var res = []
+  var res = [];
   for (var k in obj) {
     if (obj.hasOwnProperty(k))  // <-- optional
       res.push(obj[k]);
@@ -1778,7 +1778,7 @@ async function readBranchFile({ dir, filepath, branch }) {
             throw new Error(`File ${filepath} not found`);
         } else {
             if (packageEntry.type == 'blob') {
-                const { object: pkg } = await git.readObject({ dir, oid: packageEntry.oid })
+                const { object: pkg } = await git.readObject({ dir, oid: packageEntry.oid });
                 return pkg.toString('utf8');
             } else if (packageEntry.type == 'tree') {
                 return loop(packageEntry.oid, path);
@@ -1840,7 +1840,7 @@ function gitDiff({dir, filepath, branch}) {
 }
 // ---------------------------------------------------------------------------------------------------------
 async function gitReset({git, dir, ref, branch, hard = false}) {
-    var re = /^HEAD~([0-9]+)$/
+    var re = /^HEAD~([0-9]+)$/;
     var m = ref.match(re);
     if (m) {
         var count = +m[1];
