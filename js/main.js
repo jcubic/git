@@ -268,9 +268,7 @@ BrowserFSConfigure().then(() => {
                         var language = m[1];
                     }
                     if (!raw && language && Prism.languages[language]) {
-                        var grammar = Prism.languages[language];
-                        var tokens = Prism.tokenize(text, grammar);
-                        text = Prism.Token.stringify(tokens, language);
+                        text = $.terminal.prism(language, text);
                     }
                     cb(text);
                 }
