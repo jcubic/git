@@ -8,8 +8,25 @@
  * Released under the MIT license
  *
  */
+/* global fs, git, BrowserFS, zip, location, $, Worker, localStorage, EventEmitter, path, vi */
 var term = {
     completion: {}
+};
+
+// restore the Array::find overwriten by dynarch from Ymacs - make it double purpose
+Array.prototype.find = function(value) {
+    if (typeof value === 'function') {
+        // original
+        let i = 0;
+        for (let item of this) {
+            if (value(item, i++)) {
+                return item;
+            }
+        }
+    } else {
+        var t = value;
+        for(var e=this.length;--e>=0;)if(this[e]===t)return e;return-1;
+    }
 };
 term.banner = [
     '  ____ ___ _____ ',
@@ -312,10 +329,10 @@ BrowserFSConfigure().then(() => {
             return !name.match(/^\.git\/?/);
         }
         return gitroot(cwd).then((dir) => {
-            return Promise.all([listBranchFiles({dir, branch}), listDir(dir)]).then(([tracked, rest]) => {
+            var all = listAllFiles({dir, pattern: /^(?!.git\/)[^\/]+\//});
+            return Promise.all([listBranchFiles({dir, branch}), all]).then(([tracked, files]) => {
                 var re = new RegExp('^' + dir);
-                rest = rest.files.map(path => path.replace(re, ''));
-                return Promise.all(union(tracked, rest).filter(notGitDir).map(filepath => {
+                return Promise.all(union(tracked, files).map(filepath => {
                     return git.status({dir, filepath}).then(status => {
                         return [filepath, status];
                     });
@@ -572,6 +589,15 @@ BrowserFSConfigure().then(() => {
             branch: function(cmd) {
                 term.echo('to be implemented');
             },
+            test: async function(cmd) {
+                try {
+                    
+                } catch (e) {
+                    term.exception(e);
+                } finally {
+                    term.resume();
+                }
+            },
             pull: async function(cmd) {
                 try {
                     term.pause();
@@ -603,12 +629,10 @@ BrowserFSConfigure().then(() => {
                         ref: 'HEAD',
                         depth: 1
                     });
-                    //console.log({head, ref});
                     if (head != ref) {
                         await new Promise((resolve) => fs.writeFile(`${dir}/.git/HEAD`, ref, resolve));
                     }
                     var HEAD_after = await git.resolveRef({dir, ref: 'HEAD'});
-                    //console.log(JSON.stringify({HEAD_after, HEAD_before}));
                     if (HEAD_after === HEAD_before) {
                         term.echo('Already up-to-date.');
                     } else {
@@ -676,8 +700,14 @@ BrowserFSConfigure().then(() => {
                     if (cmd.args.length) {
                         term.pause();
                         var dir = await gitroot(cwd);
-                        await git_wrapper.checkout({dir, ref: cmd.args[0]});
-                        branch = await gitBranch({cwd});
+                        var branches = await git.listBranches({dir});
+                        if (branches.includes(cmd.args[0])) {
+                            await git_wrapper.checkout({dir, ref: cmd.args[0]});
+                            branch = await gitBranch({cwd});
+                        } else {
+                            var filepath = cmd.args[0].replace(dir, '');
+                            await gitCheckoutFile({dir, filepath, branch});
+                        }
                     } else {
                         term.echo('to be implemented');
                         /*
@@ -795,10 +825,9 @@ BrowserFSConfigure().then(() => {
                         var staged = files.filter(([_, stat]) => ['modified', 'deleted', 'added'].includes(stat));
                         var not_staged = files.filter(([_, stat]) => ['*modified', '*deleted'].includes(stat));
                         var new_files = files.filter(([_, stat]) => stat === '*added');
-                        console.log({files, staged, not_staged, new_files});
                         var mapping = {
                             'added': 'new file'
-                        }
+                        };
                         const format = ([filepath, status]) => {
                             status = status.replace(/^\*/, '');
                             return '#   ' + padright(`${mapping[status] || status}:`, 12) + filepath;
@@ -894,7 +923,7 @@ BrowserFSConfigure().then(() => {
                                         if (!long_options.includes(/--cached/)) {
                                             git.remove({dir, filepath}).then(() => fs.unlink(path_name));
                                         } else {
-                                            git.remove({dir, filepath})
+                                            git.remove({dir, filepath});
                                         }
                                     }
                                 } else {
@@ -914,7 +943,7 @@ BrowserFSConfigure().then(() => {
                     {name: 'password', mask: true},
                     {name: 'fullname'},
                     {name: 'email'}
-                ]
+                ];
                 term.echo('This will not authenticate to test if login/password are correct,\n'+
                           'only save credentials in localStorage (expect password) and use them when push/clone/commit');
                 var history = term.history();
@@ -1057,7 +1086,7 @@ BrowserFSConfigure().then(() => {
                                     color_name = line[0] == '-' ? 'red' : 'green';
                                 }
                                 if (color_name) {
-                                    return color(color_name, line);
+                                    return color(color_name, $.terminal.escape_brackets(line));
                                 } else {
                                     return line;
                                 }
@@ -1122,7 +1151,6 @@ BrowserFSConfigure().then(() => {
                                   .then(([head, remote_head]) => ({ dir, head, remote_head }));
                 }).then(({dir, head, remote_head}) => {
                     function format(commit) {
-                        console.log({head, remote_head, commit: commit.oid});
                         var output = [];
                         var suffix = '';
                         if (head === remote_head && head === commit.oid) {
@@ -1471,7 +1499,6 @@ function init_ymacs() {
     // -------------------------------------------------------------------------------------------------
     Ymacs.prototype.fs_getFileContents = function(name, nothrow, cont) {
         var self = this;
-        console.log(name);
         fs.stat(name, function(err, stat) {
             if (err || !stat.isFile()) {
                 cont(null, null);
@@ -1579,6 +1606,34 @@ function time() {
     return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => ('0' + n).slice(-2)).join(':');
 }
 
+// ---------------------------------------------------------------------------------------------------------
+async function listAllFiles({dir, pathname = '', pattern = null}) {
+    let files = [];
+    var root = pathname ? path.join(dir, pathname) : dir;
+    let content = await listDir(root);
+    function skip(name) {
+        return pattern !== null && !name.match(pattern);
+    }
+    for (let filename of content.files) {
+        if (pathname) {
+            filename = path.join(pathname, filename);
+        }
+        if (skip(filename)) {
+            continue;
+        }
+        files.push(filename);
+    }
+    for (let dirname of content.dirs) {
+        if (pathname) {
+            dirname = path.join(pathname, dirname);
+        }
+        if (skip(dirname + '/')) {
+            continue;
+        }
+        files = files.concat(await listAllFiles({dir, pathname: dirname, pattern}));
+    }
+    return files;
+}
 // ---------------------------------------------------------------------------------------------------------
 function listDir(path) {
     return new Promise(function(resolve, reject) {
@@ -1771,7 +1826,9 @@ async function readBranchFile({ dir, filepath, branch }) {
         }
         var name = path.shift();
         const { object: { entries } } = await git.readObject({ dir, oid: tree });
-        const packageEntry = entries.find((entry) => entry.path === name);
+        const packageEntry = entries.find((entry) => {
+            return entry.path === name;
+        });
         if (!packageEntry) {
             throw new Error(`File ${filepath} not found`);
         } else {
@@ -1820,6 +1877,24 @@ async function gitBranch({cwd}) {
         return git.currentBranch({dir});
     } catch(e) {
     }
+}
+// ---------------------------------------------------------------------------------------------------------
+function gitCheckoutFile({dir, filepath, branch}) {
+    var fname = dir + '/' + filepath;
+    return new Promise(function(resolve, reject) {
+        readBranchFile({dir, branch, filepath}).then(oldFile => {
+            if (!oldFile) {
+                return;
+            }
+            fs.writeFile(fname, oldFile, err => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
+    });
 }
 // ---------------------------------------------------------------------------------------------------------
 function gitDiff({dir, filepath, branch}) {
@@ -1973,16 +2048,13 @@ async function makeZip(dir, filepath) {
         var relPath = filepath.replace(re, '').replace(/^\//, '');
         if (stat == 'directory') {
             if (filepath !== dir) {
-                console.log({relPath});
                 directories[relPath] = zip.folder(relPath);
             }
         } else if (stat == 'file') {
             var parts = relPath.split('/');
             var filename = parts.pop();
             var dir = parts.join('/');
-            console.log({dir, filename});
             await new Promise(function(resolve, reject) {
-                console.log(filepath);
                 fs.readFile(filepath, function(err, data) {
                     if (err) {
                         return reject(err);
