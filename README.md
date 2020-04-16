@@ -1,4 +1,6 @@
 # GIT Web Terminal
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fjcubic%2Fgit.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2Fjcubic%2Fgit?ref=badge_shield)
+
 
 This project was created using [isomorphic-git](https://github.com/isomorphic-git/isomorphic-git) and other
 libraries, you can check which ones was used when you
@@ -42,3 +44,6 @@ I've needed to delete it because of GPL license).
 Licensed under [MIT](http://opensource.org/licenses/MIT) license
 
 Copyright (c) 2018 [Jakub Jankiewicz](http://jcubic.pl/jakub-jankiewicz)
+
+
+[![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2Fjcubic%2Fgit.svg?type=large)](https://app.fossa.io/projects/git%2Bgithub.com%2Fjcubic%2Fgit?ref=badge_large)
