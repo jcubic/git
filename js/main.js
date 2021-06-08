@@ -96,7 +96,7 @@ BrowserFSConfigure().then(() => {
     };
     if ('serviceWorker' in navigator) {
         // loading this repo from browerFS will not work because serviceWorker can't be loaded from
-        // serivice worker.
+        // service worker.
         if (!scope.match(/__browserfs__/)) {
             navigator.serviceWorker.register('sw.js', {scope})
                      .then(function(reg) {
@@ -1255,7 +1255,7 @@ BrowserFSConfigure().then(() => {
                 '\t[[!;;;;https://isomorphic-git.github.io]isomorphic-git] v. ' + git.version() + ' by William Hilton',
                 '\t[[!;;;;https://github.com/jvilk/BrowserFS]BrowserFS] by John Vilk',
                 '\t[[!;;;;https://terminal.jcubic.pl]jQuery Terminal] v.' + $.terminal.version + ' by Jakub Jankiewicz',
-                '\t[[!;;;;https://github.com/timoxley/wcwidth]wcwidth] by Tim Oxley',
+                '\t[[!;;;;https://github.com/timoxley/wcwidth]wcwidth] by Jun Woong',
                 '\t[[!;;;;https://github.com/inexorabletash/polyfill]keyboard key polyfill] by Joshua Bell',
                 '\t[[!;;;;https://github.com/jcubic/jsvi]jsvi] originaly by Internet Connection, Inc. with changes from Jakub Jankiewicz',
                 '\t[[!;;;;https://github.com/Olical/EventEmitter/]EventEmitter] by Oliver Caldwell',
