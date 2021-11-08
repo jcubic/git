@@ -491,7 +491,10 @@ BrowserFSConfigure().then(() => {
             }
             list(cwd + '/' + (args[0] || '')).then((content) => {
                 var dirs = filter(['.', '..'].concat(content.dirs)).map((dir) => color('blue', dir));
-                term.echo(dirs.concat(filter(content.files)));
+                var result = dirs.concat(filter(content.files));
+                if (result.length) {
+                    term.echo(result);
+                }
             });
         },
         clean: function() {
@@ -1403,6 +1406,7 @@ BrowserFSConfigure().then(() => {
                     case 'vi':
                     case 'less':
                     case 'emacs':
+                    case 'view':
                         processAssets(content => cb(prepend(trailing(content.dirs).concat(content.files))));
                         break;
                     // complete directories
