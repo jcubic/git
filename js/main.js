@@ -582,6 +582,12 @@ BrowserFSConfigure().then(() => {
                         const commit = commits.pop();
                         const head = await git.resolveRef({dir, ref: 'HEAD'});
                         term.echo(`HEAD is now at ${commit.oid.substring(0, 7)} ${commit.message.trim()}`);
+                    } else {
+                        const matrix = await git.statusMatrix({fs, dir});
+                        const files = matrix.filter(file => [0,3].includes(file[3]));
+                        files.forEach(([filepath]) => {
+                            git.resetIndex({fs, dir: '/gaiman', filepath});
+                        });
                     }
                 } catch(e) {
                     term.exception(e);
@@ -887,14 +893,14 @@ BrowserFSConfigure().then(() => {
                 } else if (cmd.args.length > 0) {
                     processGitFiles(cmd.args).then(({files, dir}) => {
                         return Promise.all(files.map(async filepath => {
-                            const satus = await git.status({dir, filepath});
+                            const status = await git.status({dir, filepath});
                             if (status.match(/^\*/)) {
                                 if (status === '*deleted') {
                                     return git.remove({dir, filepath});
                                 }
                                 await git.add({dir, filepath});
                             }
-                        });
+                        }));
                     }).then(term.resume).catch(error);
                 } else {
                     term.resume();
