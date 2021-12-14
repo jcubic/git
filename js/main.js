@@ -886,7 +886,15 @@ BrowserFSConfigure().then(() => {
                     }).then(term.resume).catch(error);
                 } else if (cmd.args.length > 0) {
                     processGitFiles(cmd.args).then(({files, dir}) => {
-                        return Promise.all(files.map(filepath => git.add({dir, filepath})));
+                        return Promise.all(files.map(async filepath => {
+                            const satus = await git.status({dir, filepath});
+                            if (status.match(/^\*/)) {
+                                if (status === '*deleted') {
+                                    return git.remove({dir, filepath});
+                                }
+                                await git.add({dir, filepath});
+                            }
+                        });
                     }).then(term.resume).catch(error);
                 } else {
                     term.resume();
