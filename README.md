@@ -8,7 +8,6 @@ that will execute `credits` command in terminal.
 First version of the app was created on [codepen](https://codepen.io/jcubic/pen/Gddxpg).
 
 ### Usage
-
 Steps to make changes to remote git repo (tested with github):
 
 1. clone repo using `git clone` (using https url),
@@ -19,26 +18,24 @@ Steps to make changes to remote git repo (tested with github):
 6. use `git push` to push your changes to remote.
 
 ### Web app viewer
-
 If you're working on web app you can open it from browser just prefix the path with `__browserfs__` the app
 is using service worker to serve files from browser fs. So if you clone this repo you will be able to view the local file
 using https://jcubic.github.io/git/__browserfs__/git/. If you open directory that don't have index.html it will
 display page with directory listing like normal web server.
 
 ### Contributors
-
 To see list of contributors you can check
 <a href="https://jcubic.github.io/git/#&#91;&#91;0,1,&quot;credits&quot;&#93;&#93;">credits command</a>.
 
-### Proxy
+### Securty
+The application don't save any information, the code runs all in browser (the demo runs on GitHub pages), the only data that is used is via PHP proxy used to enable CORS.
 
+### Proxy
 Proxy used to fetch files from remote repositories is located on my hosting
 [https://jcubic.pl/proxy.php](https://jcubic.pl/proxy.php). You can read the source code of that file
 [here](https://github.com/jcubic/git/blob/357848672683d1959dbd1fa3d5023302a4151474/proxy.php) (it's in commit because
 I've needed to delete it because of GPL license).
 
 ### License
-
-Licensed under [MIT](http://opensource.org/licenses/MIT) license
-
-Copyright (c) 2018 [Jakub Jankiewicz](http://jcubic.pl/jakub-jankiewicz)
+Licensed under [MIT](http://opensource.org/licenses/MIT) license<br/>
+Copyright (c) 2018 [Jakub T. Jankiewicz](http://jcubic.pl/me)
