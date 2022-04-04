@@ -27,7 +27,7 @@ display page with directory listing like normal web server.
 To see list of contributors you can check
 <a href="https://jcubic.github.io/git/#&#91;&#91;0,1,&quot;credits&quot;&#93;&#93;">credits command</a>.
 
-### Securty
+### Securty and Privacy
 The application don't save any information, the code runs all in browser (the demo runs on GitHub pages), the only data that is used is via PHP proxy used to enable CORS.
 
 ### Proxy
