@@ -627,7 +627,6 @@ BrowserFSConfigure().then(() => {
                     });
                     await git_wrapper.pull({
                         dir,
-                        singleBranch: true,
                         fastForwardOnly: true,
                         ...auth,
                         emitter: messageEmitter()
@@ -691,9 +690,7 @@ BrowserFSConfigure().then(() => {
                         var emitter = messageEmitter();
                         await git_wrapper.fetch({
                             dir,
-                            singleBranch: true,
                             ref: cmd.args[0],
-                            //depth: 1,
                             emitter
                         });
                     }
@@ -1259,7 +1256,6 @@ BrowserFSConfigure().then(() => {
                         url: url,
                         ...auth,
                         depth: depth ? +depth : undefined,
-                        singleBranch: true,
                         emitter: new messageEmitter()
                     }).then(term.resume).catch(error);
                 }
