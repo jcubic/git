@@ -28,6 +28,7 @@ self.addEventListener('fetch', function (event) {
             }
         });
     });
+    var re = /__browserfs__(.*)/;
     event.respondWith(fs.then(function(fs) {
         return new Promise(function(resolve, reject) {
             function sendFile(path) {
@@ -50,7 +51,9 @@ self.addEventListener('fetch', function (event) {
                 });
             }
             var url = event.request.url;
-            var m = url.match(/__browserfs__(.*)/);
+            if (event.request.referrer.match(re)) {
+                debugger;
+            }
             function redirect_dir() {
                 return resolve(Response.redirect(url + '/', 301));
             }
@@ -82,6 +85,7 @@ self.addEventListener('fetch', function (event) {
                     }
                 });
             }
+            var m = url.match(re);
             if (m) {
                 var path = m[1];
                 if (path === '') {

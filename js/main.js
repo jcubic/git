@@ -706,7 +706,7 @@ BrowserFSConfigure().then(() => {
                     if (cmd.args.length) {
                         term.pause();
                         var dir = await gitroot(cwd);
-                        var branches = await git.listBranches({dir});
+                        var branches = await git.listBranches({dir, remote: 'origin'});
                         if (branches.includes(cmd.args[0])) {
                             await git_wrapper.checkout({dir, ref: cmd.args[0]});
                             branch = await gitBranch({cwd});
