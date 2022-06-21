@@ -50,11 +50,10 @@ self.addEventListener('fetch', function (event) {
                 });
             }
             var url = event.request.url;
-            var m = url.match(/__browserfs__(.*)/);
             function redirect_dir() {
                 return resolve(Response.redirect(url + '/', 301));
             }
-            function serve() {
+            function serve(path) {
                 fs.stat(path, function(err, stat) {
                     if (err) {
                         return resolve(textResponse(error404Page(path)));
@@ -82,13 +81,14 @@ self.addEventListener('fetch', function (event) {
                     }
                 });
             }
+            var m = url.match(/__browserfs__(.*)/);
             if (m) {
                 var path = m[1];
                 if (path === '') {
                     return redirect_dir();
                 }
                 console.log('serving ' + path + ' from browserfs');
-                serve();
+                serve(path.replace(/\?.*$/, ''));
             } else {
                 if (event.request.cache === 'only-if-cached' && event.request.mode !== 'same-origin') {
                     return;
