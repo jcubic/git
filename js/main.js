@@ -1301,7 +1301,7 @@ BrowserFSConfigure().then(() => {
                 'You can also open directories (it\'s just iframe with files served from browserfs using service worker).',
                 'If you have web app you can open it using file browser and [[;#fff;]view] command.',
                 '',
-                'You can use [[;#fff;]record start] to record commands in url hash so you can share commansds you\'ll type.',
+                'You can use [[;#fff;]record start] to record commands in url hash so you can share commands you\'ll type.',
                 ''
             ].join('\n'), {keepWords: true});
         }
