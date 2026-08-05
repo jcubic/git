@@ -13,9 +13,13 @@
 /* global BrowserFS, Response, setTimeout, fetch, Blob, Headers */
 self.importScripts('https://cdn.jsdelivr.net/npm/browserfs');
 
-self.addEventListener('install', self.skipWaiting);
+self.addEventListener('activate', (event) => {
+    event.waitUntil(clients.claim());
+});
 
-self.addEventListener('activate', self.skipWaiting);
+self.addEventListener('install', (event) => {
+    self.skipWaiting();
+});
 
 self.addEventListener('fetch', function (event) {
     let path = BrowserFS.BFSRequire('path');
