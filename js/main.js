@@ -43,7 +43,8 @@ function greetings() {
         title = 'GIT Web Terminal';
     }
     return title + '\n\n' + 'use [[;#fff;]help] to see the available commands' +
-           ' or [[;#fff;]credits] to list the projects used\n';
+        ' or [[;#fff;]credits] to list the projects used\n' +
+        'you can also see the [[!;;;;https://github.com/jcubic/git]source code]\n'
 }
 function BrowserFSConfigure() {
     return new Promise(function(resolve, reject) {
