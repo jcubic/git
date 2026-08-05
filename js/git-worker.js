@@ -4,7 +4,7 @@ importScripts(
     "https://unpkg.com/isomorphic-git@0.x.x",
     // '../../../iso-git-latest/dist/bundle.umd.min.js',
     "https://unpkg.com/browserfs@1.x.x",
-    "https://rawgit.com/Olical/EventEmitter/master/EventEmitter.js"
+    "https://cdn.jsdelivr.net/npm/wolfy87-eventemitter@5.2.5/EventEmitter.js"
 );
 
 const localStorage = self.localStorage = wrap('localStorage', [
